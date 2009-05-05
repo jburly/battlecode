@@ -1,0 +1,83 @@
+<project name="Battlecode 2008" basedir="." default="run">
+
+  <description>
+    Build file for Battlecode 2008 players.
+  </description>
+
+  <property name="path.base" location="."/>
+  <property name="path.lib" location="${path.base}/lib"/>
+
+  <property name="path.teams" location="${path.base}/teams"/>
+  <property name="path.maps" location="${path.base}/maps"/>
+  <property name="path.bin" location="${path.base}/bin"/>
+  <property name="path.matches" location="${path.base}/matches"/>
+  
+  <fileset id="files.build" dir="${path.lib}">
+    <include name="*.jar"/>
+  </fileset>
+
+  <path id="classpath.run">
+    <dirset dir="${path.bin}"/>
+    <dirset dir="${path.lib}"/>
+    <dirset dir="${path.teams}"/>
+    <fileset refid="files.build"/>
+  </path>
+  
+  <target name="-init">
+    <mkdir dir="${path.bin}"/>
+  </target>
+
+  <target name="clean">
+    <delete dir="${path.bin}"/>
+  </target>
+
+  <target name="build" depends="-init">
+    <javac 
+     classpathref="classpath.run" 
+     destdir="${path.bin}" 
+     srcdir="${path.teams}">
+      <compilerarg line="-Xlint"/>
+    </javac>
+  </target>
+
+  <target name="run" depends="build">
+    <java 
+     classpathref="classpath.run"
+     fork="yes"
+     classname="battlecode.main.Main">
+      <jvmarg value="-Dapple.awt.graphics.UseQuartz=true"/>
+      <jvmarg value="-Dbc.server.map-path=${path.maps}"/>
+	  <env key="LD_LIBRARY_PATH" path="./:${env.LD_LIBRARY_PATH}" />
+      <arg line="-c bc.conf"/>
+    </java>
+  </target> 
+
+  <target name="serve" depends="build">
+    <java
+     classpathref="classpath.run"
+     fork="yes"
+     classname="battlecode.main.Main">
+      <jvmarg value="-Dbc.server.mode=tcp"/>
+      <arg line="-c bc.conf"/>
+    </java>
+  </target>
+
+  <target name="file" depends="build">
+    <java
+     classpathref="classpath.run"
+     fork="yes"
+     classname="battlecode.main.Main">
+      <jvmarg value="-Dbc.server.mode=headless"/>
+      <arg line="-c bc.conf"/>
+    </java>
+  </target>
+
+  <target name="jar" depends="build">
+    <fail unless="team">
+    run as "ant -Dteam=name jar" where "name" is a folder in your teams folder.
+    </fail>
+    <jar destfile="${path.base}/submission.jar"
+      basedir="${path.teams}"
+      includes="${team}/**/*.java"/>
+  </target>
+</project>
