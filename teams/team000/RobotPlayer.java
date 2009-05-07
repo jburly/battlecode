@@ -12,6 +12,7 @@ public class RobotPlayer implements Runnable{
  private int archonNum, scoutNum, bomberNum, soldierNum, mortarNum, sniperNum = 0;
  
  private final static int MIN_SOLDIER_NUM = 4;
+ private final static int MIN_MORTAR_NUM = 3;
  
  private final static String ATTACK_STRING = "attack";
  private final static String SPAWN_STRING = "spawn";
@@ -27,7 +28,7 @@ public class RobotPlayer implements Runnable{
  private RobotType myType;
  
  private int following = 0;//the ID of the robot you're following
- private Message[] incomingMsgs; //all the broadcasted messages in range
+ //private Message[] incomingMsgs; //all the broadcasted messages in range
  private Message leaderMsg = null; //message from the leader
  
  private boolean working;//if the archon is already doing something 
@@ -404,22 +405,25 @@ public class RobotPlayer implements Runnable{
   return needToHeal;
  }
  
- private Message findLeaderMessage(Message[] messages){
-  Message leaderMsg = null;
-  try{
-   //parse messages
-   if(incomingMsgs != null){
-    for(int i = 0; i < incomingMsgs.length; i++){
-     //checks if it's a message from the leader
-     if(incomingMsgs[i].ints[0] == following)
-      leaderMsg = incomingMsgs[i];
-    }
-   }
-  }catch(Exception e){
-   System.out.println("Caught exception:");
-   e.printStackTrace();
-  }
-  return leaderMsg;
+ private Message findLeaderMessage(Message[] incomingMsgs){
+     Message leaderMsg = null;
+     try{
+	 //parse messages
+      
+	 if(incomingMsgs != null){
+	     System.out.println("incoming msgs not null " + incomingMsgs.length);
+	     for(int i = 0; i < incomingMsgs.length; i++){
+		 //checks if it's a message from the leader
+		 if(incomingMsgs[i].ints[0] == following)
+		     leaderMsg = incomingMsgs[i];
+		 System.out.println("message is" + incomingMsgs[i].ints[0]);
+	     }
+	 }
+     }catch(Exception e){
+	 System.out.println("Caught exception:");
+	 e.printStackTrace();
+     }
+     return leaderMsg;
  }
  
  /*************************
@@ -469,7 +473,7 @@ public class RobotPlayer implements Runnable{
  private void soldier(){
   try{
    //get all messages
-   incomingMsgs = rc.getAllMessages();
+   Message[] incomingMsgs = rc.getAllMessages();
    
    //top priority is figuring out who to follow
    //this should only be done once
@@ -499,36 +503,37 @@ public class RobotPlayer implements Runnable{
  //private boolean movedBack = false;
  private void mortar(){
      while (true) {
-  try{
-      while (rc.isMovementActive() || rc.isAttackActive()){rc.yield();}
-      Message[] incomingMsgs = rc.getAllMessages(); 
-   //boolean canAttack = false; //if bot can attack the target
-   //get all messages
+	 try{
+	     while (rc.isMovementActive() || rc.isAttackActive()){rc.yield();}
+	     Message[] incomingMsgs = rc.getAllMessages(); 
+	     //boolean canAttack = false; //if bot can attack the target
+	     //get all messages
       
-   incomingMsgs = rc.getAllMessages();
-   if(fighterMom != null) {
-       leaderMsg = findLeaderMessage(incomingMsgs);
-   }
-   else
-       findMotherBot();
+	     
+	     if(fighterMom != null) {
+		 leaderMsg = findLeaderMessage(incomingMsgs);
+		 System.out.println(fighterMom.getID());  //+ " " + leaderMsg.ints[0]);
+	     }
+	     else
+		 findMotherBot();
    
-   if(leaderMsg != null) {
-       System.out.println(leaderMsg.locations[1] + " ");
-    if(leaderMsg.strings[1].equalsIgnoreCase("attack")){
-	if (leaderMsg.locations[1] != null)
-	         if (rc.canAttackSquare(leaderMsg.locations[1]))
-	             rc.attackGround(leaderMsg.locations[1]);
-	         else
-	             goalDir = calcDirection(leaderMsg.locations[1]);
-	else
-	{
-	    goalDir = msgDirection(leaderMsg.strings[2]);
-	    if (goalDir != null)
-		hunt();
-	} 
-    }
-	/*
-     goalDir = msgDirection(leaderMsg.strings[2]);
+	     if(leaderMsg != null) {
+		 System.out.println(leaderMsg.locations[1] + " ");
+		 if(leaderMsg.strings[1].equalsIgnoreCase("attack")){
+		     if (leaderMsg.locations[1] != null)
+			 if (rc.canAttackSquare(leaderMsg.locations[1]))
+			     rc.attackGround(leaderMsg.locations[1]);
+			 else
+			     goalDir = calcDirection(leaderMsg.locations[1]);
+		     else
+		     {
+			 goalDir = msgDirection(leaderMsg.strings[2]);
+			 if (goalDir != null)
+			     hunt();
+		     } 
+		 }
+		 /*
+     	goalDir = msgDirection(leaderMsg.strings[2]);
      MapLocation goalLoc = leaderMsg.locations[1];
      if(goalLoc != null && rc.canSenseSquare(goalLoc))
       target = rc.senseGroundRobotAtLocation(goalLoc);
@@ -551,17 +556,18 @@ public class RobotPlayer implements Runnable{
 //    }
    // else
      //hunt();
-   }
+	     }
 //   else if(rc.getRoundsUntilMovementIdle() == 0 && !canAttack)
 //    hunt();
     
-   rc.yield();
-  }catch(Exception e){
-   System.out.println("caught exception:");
-   e.printStackTrace();
-  }
+	     rc.yield();
+	 }catch(Exception e){
+	     System.out.println("caught exception:");
+	     e.printStackTrace();
+	 }
      }
  }
+ 
  private void sniper(){
   try{
    
@@ -605,7 +611,7 @@ public class RobotPlayer implements Runnable{
  private void designateLeader(){
   Message establishLeaderMsg = null;
   try{
-   incomingMsgs = rc.getAllMessages();
+   Message[] incomingMsgs = rc.getAllMessages();
    //Message establishLeaderMsg = null;
    //parse messages
    if(incomingMsgs != null){
@@ -657,68 +663,86 @@ public class RobotPlayer implements Runnable{
  
  //archon leader action routines
  private void archonLeader(){
-  try{
-   boolean broadcasted = false;
-   //get msgs
-   incomingMsgs = rc.getAllMessages();
-   //parse messages
-   //look for a message from the other leader to establish who it is
-   if(incomingMsgs != null && alliedSquadLeader == 0){
-    for(int i = 0; i < incomingMsgs.length; i++){
-     //checks if it's a message from another leader
-     if(incomingMsgs[i].strings[0].equals("leaderMsg") &&
-       incomingMsgs[i].ints[0] != rc.getRobot().getID())
-      alliedSquadLeader = incomingMsgs[i].ints[0];
-    }
-   }
-   Message msg = new Message();
-   msg.strings = new String[3];
-   msg.locations = new MapLocation[2];
-   msg.ints = new int[2];
-   //you're the leader, add the location to the broadcast
-   msg.strings[0] = "leaderMsg";
-   msg.locations[0] = rc.getLocation();
-   msg.ints[0] = rc.getRobot().getID();
+     int wake_delay = 0;
+     int start_morph_delay = 0;
+     while (true) {
+	 try{
+	     
+	     working = rc.isMovementActive() ||
+	          rc.getRoundsUntilAttackIdle() != 0 ||
+	          rc.getRoundsUntilMovementIdle() != 0;
+	     
+	     boolean broadcasted = false;
+	     //get msgs	
+	     Message[] incomingMsgs = rc.getAllMessages();
+	     //parse messages
+	     //look for a message from the other leader to establish who it is
+	     if(incomingMsgs != null && alliedSquadLeader == 0){
+		 for(int i = 0; i < incomingMsgs.length; i++){
+		     //checks if it's a message from another leader
+		     if(incomingMsgs[i].strings[0].equals("leaderMsg") &&
+			     incomingMsgs[i].ints[0] != rc.getRobot().getID())
+			 alliedSquadLeader = incomingMsgs[i].ints[0];
+		 }
+	     }
+	     Message msg = new Message();
+	     msg.strings = new String[3];
+	     msg.locations = new MapLocation[2];
+	     msg.ints = new int[2];
+	     //you're the leader, add the location to the broadcast
+	     msg.strings[0] = "leaderMsg";
+	     msg.locations[0] = rc.getLocation();
+	     msg.ints[0] = rc.getRobot().getID();
        
-   countSquad(); //count the number of troops close by
-   //System.out.println(soldierNum);
-            int soldiersNeeded = 0;
-            //System.out.println(soldierNum);
-            if(troopNum() < MIN_SOLDIER_NUM){
-                soldiersNeeded = MIN_SOLDIER_NUM - soldierNum;
-               // if(rc.canSpawn() &&
-                 //      rc.senseGroundRobotAtLocation(rc.getLocation().add(rc.getDirection())) == null &&
-                 //      rc.getEnergonLevel() > 2*RobotType.SOLDIER.spawnCost()) {
-                    //rc.spawn(RobotType.SOLDIER);
-                    //soldiersNeeded--;
-                //}
-                msg.ints[1] = soldiersNeeded;
-                msg.strings[1] = SPAWN_STRING;
-                rc.setIndicatorString(0, " " + soldiersNeeded);
-                rc.setIndicatorString(1, " " + following);
-            }
-            else{
-     
+	     System.out.println(start_morph_delay + " " + Clock.getRoundNum() + " " + wake_delay);
+	     if (Clock.getRoundNum() - start_morph_delay < wake_delay) {
+		 msg.strings[1] = "idle";
+	     }
+	     else {
+		 countSquad(); //count the number of troops close by
+		 //	System.out.println(soldierNum);
+		 int soldiersNeeded = 0;
+		 //System.out.println(soldierNum);
+		 if(troopNum() < MIN_SOLDIER_NUM){
+		     soldiersNeeded = MIN_SOLDIER_NUM - soldierNum;
+		     // if(rc.canSpawn() &&
+		     //      rc.senseGroundRobotAtLocation(rc.getLocation().add(rc.getDirection())) == null &&
+		     //      rc.getEnergonLevel() > 2*RobotType.SOLDIER.spawnCost()) {
+		     //rc.spawn(RobotType.SOLDIER);
+		     //soldiersNeeded--;
+		     msg.ints[1] = soldiersNeeded;
+		     msg.strings[1] = SPAWN_STRING;
+                
+		     if (mortarNum < MIN_MORTAR_NUM) {
+			 start_morph_delay = Clock.getRoundNum();
+			 wake_delay = 150;
+		     }
+                
+		     rc.setIndicatorString(0, " " + soldiersNeeded);
+		     rc.setIndicatorString(1, " " + following);
+		 }
+		 else {
              
-             designateTarget();
-             msg.strings[1] = ATTACK_STRING;
-             msg.strings[2] = goalDir.toString();
-             
-             if (targetInfo != null && targetInfo.team != myTeam)
-        	 msg.locations[1] = targetInfo.location;                
-             else 
-        	 if(!working && furthestArchonDist() < 8)
-        	     hunt(); 
-            }
-           
-        if(!broadcasted) 
-         rc.broadcast(msg);
-        rc.yield();
-       
-  }catch(Exception e){
-   System.out.println("Caught exception:");
-   e.printStackTrace();
-  }
+		 designateTarget();
+		 msg.strings[1] = ATTACK_STRING;
+		 msg.strings[2] = goalDir.toString();
+		 
+		 if (targetInfo != null && targetInfo.team != myTeam)
+		     msg.locations[1] = targetInfo.location;                
+		 else 
+		     if(!working && furthestArchonDist() < 8)
+			 hunt(); 
+	     	}
+	     }
+	     if(!broadcasted) 
+		 rc.broadcast(msg);
+	     rc.yield();
+	     
+	 }catch(Exception e){
+	     System.out.println("Caught exception:");
+	     e.printStackTrace();
+	 }
+     }
  }
  
  
@@ -731,13 +755,13 @@ public class RobotPlayer implements Runnable{
  private void archonFollower(){
   try{
       
-    //prioritize healing bots in adjacent squares
+      //prioritize healing bots in adjacent squares
       Robot weakAdjAlly = findWeakestAdjacentBot();
       if(weakAdjAlly != null && needsHealing(weakAdjAlly))
        archonHeal(weakAdjAlly);
       
-   //get msgs
-   incomingMsgs = rc.getAllMessages();
+      //get msgs
+   Message[] incomingMsgs = rc.getAllMessages();
    
    //get message from leader
    leaderMsg = findLeaderMessage(incomingMsgs);
@@ -778,10 +802,10 @@ public class RobotPlayer implements Runnable{
     }
    }
    else if(behavior.equals(ATTACK_STRING)){
-    leaderMsg.ints[0] = rc.getRobot().getID();
-    rc.setIndicatorString(2, behavior);
-    rc.broadcast(leaderMsg);
-    if (!working && leaderMsg.locations[1] == null) hunt();
+       leaderMsg.ints[0] = rc.getRobot().getID();
+       rc.setIndicatorString(2, behavior);
+       rc.broadcast(leaderMsg);
+       if (!working && leaderMsg.locations[1] == null) hunt();
    }
    }       /*  //heal
             if (behavior.equals("spawn") && spawnLocation != null){
