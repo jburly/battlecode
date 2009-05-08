@@ -185,6 +185,7 @@ public class RobotPlayer implements Runnable{
   */
  private void designateTarget(){
   try{
+      targetInfo = null;
       target = searchForTower();
       if(target != null){
 	  targetInfo = rc.senseRobotInfo(target);
@@ -411,12 +412,10 @@ public class RobotPlayer implements Runnable{
 	 //parse messages
       
 	 if(incomingMsgs != null){
-	     System.out.println("incoming msgs not null " + incomingMsgs.length);
 	     for(int i = 0; i < incomingMsgs.length; i++){
 		 //checks if it's a message from the leader
 		 if(incomingMsgs[i].ints[0] == following)
 		     leaderMsg = incomingMsgs[i];
-		 System.out.println("message is" + incomingMsgs[i].ints[0]);
 	     }
 	 }
      }catch(Exception e){
@@ -520,12 +519,20 @@ public class RobotPlayer implements Runnable{
 		 System.out.println("leader msg not null!");
 		 if(leaderMsg.strings[1].equalsIgnoreCase("attack")){
 		     if (leaderMsg.locations[1] != null)
-			 if (rc.canAttackSquare(leaderMsg.locations[1]))
-			     rc.attackGround(leaderMsg.locations[1]);
-			 else {
-			     goalDir = calcDirection(leaderMsg.locations[1]);
-			     hunt();
-			 }
+		     {
+			 RobotInfo towerInfo = null;
+			 if (rc.canSenseSquare(leaderMsg.locations[1]))
+			     towerInfo = rc.senseRobotInfo(
+				     rc.senseGroundRobotAtLocation(leaderMsg.locations[1]));
+			 
+			 if ((towerInfo != null && towerInfo.team != myTeam) || towerInfo == null) 
+			     if (rc.canAttackSquare(leaderMsg.locations[1]))
+				 rc.attackGround(leaderMsg.locations[1]);
+			     else {
+				 goalDir = calcDirection(leaderMsg.locations[1]);
+				 hunt();
+			     }
+		     }
 		     else
 		     {
 			 goalDir = msgDirection(leaderMsg.strings[2]);
@@ -803,16 +810,18 @@ public class RobotPlayer implements Runnable{
 		  //where we're headed from what the leader tells us
 		  goalDir = msgDirection(leaderMsg.strings[2]);
 		  MapLocation goalLoc = leaderMsg.locations[1];
+		  targetInfo = null;
 		  
 		  if(goalLoc != null && rc.canSenseSquare(goalLoc))
 		      target = rc.senseGroundRobotAtLocation(goalLoc);
 		  
-		  
-		  
 		  if (goalLoc == null) {
 		      target = searchForTower();
-		      if (target != null)
-			  leaderMsg.locations[1] = rc.senseRobotInfo(target).location;
+		      if (target != null) {
+			  targetInfo = rc.senseRobotInfo(target);
+			  if (targetInfo.team != myTeam)
+		      		leaderMsg.locations[1] = targetInfo.location;
+		      }
 		  }
 		  //splice in the new ID
 		  leaderMsg.ints[0] = rc.getRobot().getID();
