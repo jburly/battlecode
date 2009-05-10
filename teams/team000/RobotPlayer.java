@@ -46,7 +46,6 @@ public class RobotPlayer implements Runnable{
          working = rc.isMovementActive() ||
           rc.getRoundsUntilAttackIdle() != 0 ||
           rc.getRoundsUntilMovementIdle() != 0;
-         //while(working){rc.yield();}
         
          switch(myType){
           case ARCHON:
@@ -81,47 +80,38 @@ public class RobotPlayer implements Runnable{
  /********************
   * Movement Methods
   ********************/
- private Direction goalDir;
- private Robot target;
- private boolean isTracing = false;
  
- //info about the target
- private RobotInfo targetInfo;
- //private boolean canAttack = false;
- 
- private void hunt(){
-  try{
-   //if there is no target, find one
-   /*if(target == null)
-    designateTarget();
-   //if target is an ally, find a new one
-   else if(targetInfo.team == myTeam)
-    designateTarget();
-    */
+ //main movement method (uses bug algorithm)
+ //takes in a direction and tries to move towards it
+ private void hunt(Direction goalDir){
+     try{
+	 
+	 boolean isTracing = false;
    
-   //move in the direction of the target
-   if(rc.canMove(goalDir)){
-    isTracing = false;
-    if(rc.getDirection() != goalDir)
-     rc.setDirection(goalDir);
-    else if(rc.canMove(rc.getDirection()))
-     rc.moveForward();
-   }
-   //if there is an obstacle in your way, trace around it
-   else{
-    isTracing = true;
-    if(rc.canMove(goalDir))
-     isTracing = false;
-    else if(rc.canMove(rc.getDirection()))
-     rc.moveForward();
-    else
-     rc.setDirection(rc.getDirection().rotateRight());
-   }
-   rc.yield();
-  }catch(Exception e){
-   System.out.println("Caught Exception:");
-   e.printStackTrace();
-  }
+	 //move in the direction of the target
+	 if(rc.canMove(goalDir)){
+	     isTracing = false;
+	     if(rc.getDirection() != goalDir)
+		 rc.setDirection(goalDir);
+	     else if(rc.canMove(rc.getDirection()))
+		 rc.moveForward();
+	 }
+	 //	if there is an obstacle in your way, trace around it
+	 else{
+	     isTracing = true;
+	     if(rc.canMove(goalDir))
+		 isTracing = false;
+	     else 
+		 if(rc.canMove(rc.getDirection()))
+		     rc.moveForward();
+		 else
+		     rc.setDirection(rc.getDirection().rotateRight());
+	 	}
+	 rc.yield();
+     }catch(Exception e){
+	 System.out.println("Caught Exception:");
+	 e.printStackTrace();
+     }
  }
  
  /*
@@ -183,30 +173,33 @@ public class RobotPlayer implements Runnable{
   * Specifically looks for towers and if none are near,
   * defaults movement to direction of closest unknown tower.
   */
- private void designateTarget(){
-  try{
-      targetInfo = null;
-      target = searchForTower();
-      if(target != null){
-	  targetInfo = rc.senseRobotInfo(target);
-	  goalDir = calcDirection(targetInfo.location);
-      }
-      else
-	  goalDir = rc.senseClosestUnknownTower();
-      rc.yield();
-  }catch(Exception e){
-   System.out.println("Caught Exception:");
-   e.printStackTrace();
-  }
+ /*
+ private void designateTarget(Direction goalDir, RobotInfo targetInfo){
+     try{
+	 //try to search for a tower in sensor range
+	 Robot target = searchForTower();
+      
+	 if(target != null){
+	     goalDir = calcDirection(rc.senseRobotInfo(target).location);
+	     targetInfo = rc.senseRobotInfo(target);
+	 }
+	 else
+	     goalDir = rc.senseClosestUnknownTower();
+      
+     }catch(Exception e){
+	 System.out.println("Caught Exception:");
+	 e.printStackTrace();
+     }
  }
+*/
  
  /*
   * Just a quick check to see if a target has been designated.
   */
- private boolean haveTarget(){
+ /*private boolean haveTarget(){
   return targetInfo != null && target != null;
  }
- 
+ */
  
  /******************************
   *       SEARCH METHODS
@@ -433,7 +426,7 @@ public class RobotPlayer implements Runnable{
  private Robot fighterMom = null; //the archon the soldier should follow
  
  private void scout(){
-  try{
+  try{/*
    if(fighterMom == null)
     findMotherBot();
    
@@ -451,18 +444,18 @@ public class RobotPlayer implements Runnable{
      else
       rc.attackGround(targetInfo.location);
    hunt();
-   
+*/   
   }catch(Exception e){
    System.out.println("caught exception");
    e.printStackTrace();
   }
  }
  private void bomber(){
-  try{
+  try{/*
   if(haveTarget())
    if(rc.canAttackSquare(targetInfo.location) && targetInfo.team != myTeam)
      rc.attackGround(targetInfo.location);
-  hunt();
+  hunt();*/
   }catch(Exception e){
    System.out.println("caught exception");
    e.printStackTrace();
@@ -529,15 +522,15 @@ public class RobotPlayer implements Runnable{
 			     if (rc.canAttackSquare(leaderMsg.locations[1]))
 				 rc.attackGround(leaderMsg.locations[1]);
 			     else {
-				 goalDir = calcDirection(leaderMsg.locations[1]);
-				 hunt();
+				 Direction goalDir = calcDirection(leaderMsg.locations[1]);
+				 hunt(goalDir);
 			     }
 		     }
 		     else
 		     {
-			 goalDir = msgDirection(leaderMsg.strings[2]);
+			 Direction goalDir = msgDirection(leaderMsg.strings[2]);
 			 if (goalDir != null)
-			     hunt();
+			     hunt(goalDir);
 		     } 
 		 }
 		 /*
@@ -673,8 +666,10 @@ public class RobotPlayer implements Runnable{
  private void archonLeader(){
      int wake_delay = 0;
      int start_morph_delay = 0;
+     boolean startOfGame = true;
      while (true) {
 	 try{
+	     int squadsNearby = 0;
 	     
 	     working = rc.isMovementActive() ||
 	          rc.getRoundsUntilAttackIdle() != 0 ||
@@ -693,6 +688,7 @@ public class RobotPlayer implements Runnable{
 			 alliedSquadLeader = incomingMsgs[i].ints[0];
 		 }
 	     }
+	     
 	     //prepare the message
 	     Message msg = new Message();
 	     msg.strings = new String[3];
@@ -701,20 +697,28 @@ public class RobotPlayer implements Runnable{
 	     
 	     //you're the leader, add the location to the broadcast
 	     msg.strings[0] = "leaderMsg";
+	     msg.strings[1] = "idle";
 	     msg.locations[0] = rc.getLocation();
 	     msg.ints[0] = rc.getRobot().getID();
        
 	     System.out.println(start_morph_delay + " " + Clock.getRoundNum() + " " + wake_delay);
-	     if (Clock.getRoundNum() - start_morph_delay < wake_delay) {
+	     
+	     if (startOfGame == true) {
 		 msg.strings[1] = "idle";
+		 int time = Clock.getRoundNum();
+		 if (time < 70) 
+		     msg.strings[1] = SPAWN_STRING;
+		 if (time >= 150)
+		     startOfGame = false;
 	     }
 	     else {
-		 countSquad(); //count the number of troops close by
-		 //	System.out.println(soldierNum);
-		 int soldiersNeeded = 0;
-		 //System.out.println(soldierNum);
-		 if(troopNum() < MIN_SOLDIER_NUM){
-		     soldiersNeeded = MIN_SOLDIER_NUM - soldierNum;
+	     
+	     countSquad(); //count the number of troops close by
+	     //	System.out.println(soldierNum);
+	     int soldiersNeeded = 0;
+	     //System.out.println(soldierNum);
+	     if(troopNum() < MIN_SOLDIER_NUM){
+		 soldiersNeeded = MIN_SOLDIER_NUM - soldierNum;
 		     // if(rc.canSpawn() &&
 		     //      rc.senseGroundRobotAtLocation(rc.getLocation().add(rc.getDirection())) == null &&
 		     //      rc.getEnergonLevel() > 2*RobotType.SOLDIER.spawnCost()) {
@@ -725,26 +729,40 @@ public class RobotPlayer implements Runnable{
                 
 		     if (mortarNum < MIN_MORTAR_NUM) {
 			 start_morph_delay = Clock.getRoundNum();
-			 wake_delay = 150;
+			 wake_delay = 80;
 		     }
                 
 		     rc.setIndicatorString(0, " " + soldiersNeeded);
 		     rc.setIndicatorString(1, " " + following);
 		 }
 		 else {
-             
-		     designateTarget();
+		     //attack tower mode
 		     msg.strings[1] = ATTACK_STRING;
+		     
+		     Direction goalDir = null;
+		     
+		     //try to search for a tower in sensor range
+		     Robot target = searchForTower();
+		     
+		     //if we found it - yay
+		     if(target != null){
+			 RobotInfo targetInfo = rc.senseRobotInfo(target);
+			 goalDir = calcDirection(targetInfo.location);
+			 //we now know where it is - pass it in the order 
+			 if (targetInfo.team != myTeam)
+				 msg.locations[1] = targetInfo.location;
+		     }
+		     //else we didn't find it, so keep moving towards it
+		     else {
+			 goalDir = rc.senseClosestUnknownTower();
+			 if (!working && furthestArchonDist() < 8)
+			     hunt(goalDir);
+		     }
+		     //we for sure know the direction of the target, so we pass it on
 		     msg.strings[2] = goalDir.toString();
-		 
-		     if (targetInfo != null && targetInfo.team != myTeam)
-			 msg.locations[1] = targetInfo.location;                
-		     else 
-			 if(!working && furthestArchonDist() < 8) {
-			     if (targetInfo == null)
-			     	hunt(); 
-			 }
 	     	}
+	     
+	     
 	     }
 	     if(!broadcasted) 
 		 rc.broadcast(msg);
@@ -766,29 +784,48 @@ public class RobotPlayer implements Runnable{
   * Routines for Archon Followers
   */
  private void archonFollower(){
-  try{
+     Direction goalDir = null;
+     MapLocation goalLoc = null;
+     while (true) {
+	 try{
+	     working = rc.isMovementActive() ||
+      		rc.getRoundsUntilAttackIdle() != 0 ||
+      		rc.getRoundsUntilMovementIdle() != 0;
       
-      //prioritize healing bots in adjacent squares
-      Robot weakAdjAlly = findWeakestAdjacentBot();
-      if(weakAdjAlly != null && needsHealing(weakAdjAlly))
-	  archonHeal(weakAdjAlly);
+	     //prioritize healing bots in adjacent squares
+	     Robot weakAdjAlly = findWeakestAdjacentBot();
+	     if(weakAdjAlly != null && needsHealing(weakAdjAlly))
+		 archonHeal(weakAdjAlly);
       
-      //get all msgs
-      Message[] incomingMsgs = rc.getAllMessages();
-      leaderMsg = findLeaderMessage(incomingMsgs);
+	     //get all msgs
+	     Message[] incomingMsgs = rc.getAllMessages();
+	     leaderMsg = findLeaderMessage(incomingMsgs);
    
-      //get orders
-      if(leaderMsg != null){
+	     //get orders
+	     if(leaderMsg != null) {
 	  //    if(distanceFrom(leaderMsg.locations[0]) >= RobotType.ARCHON.broadcastRadius()){
 	  //     	goalDir = calcDirection(leaderMsg.locations[0]);
 	  //     behavior = "followLeader";
 	  //     hunt();
 	  //    }
-	  if(leaderMsg.strings[1].equalsIgnoreCase(SPAWN_STRING)) 
-	      behavior = "spawn";
-	  else 
-	      if(leaderMsg.strings[1].equalsIgnoreCase(ATTACK_STRING))
-		  behavior = "attack";
+
+		 if(leaderMsg.strings[1].equalsIgnoreCase(SPAWN_STRING)) 
+		     behavior = "spawn";
+		 else 
+		     if(leaderMsg.strings[1].equalsIgnoreCase(ATTACK_STRING)) {
+			 
+			 behavior = "attack";
+			 //where we're headed from what the leader tells us
+			 if (goalLoc == null)
+			     goalLoc = leaderMsg.locations[1];
+			  
+			 //check if we get a new direction
+			 if (leaderMsg.strings[2] != null)
+			     goalDir = msgDirection(leaderMsg.strings[2]);
+		     }
+		     else
+			 if(leaderMsg.strings[1].equalsIgnoreCase("idle"))
+			     behavior = "idle";
     
 	  //spawn
 	  if(behavior.equals(SPAWN_STRING)){
@@ -807,29 +844,31 @@ public class RobotPlayer implements Runnable{
 	  }
 	  else 
 	      if(behavior.equals(ATTACK_STRING)){
-		  //where we're headed from what the leader tells us
-		  goalDir = msgDirection(leaderMsg.strings[2]);
-		  MapLocation goalLoc = leaderMsg.locations[1];
-		  targetInfo = null;
 		  
-		  if(goalLoc != null && rc.canSenseSquare(goalLoc))
-		      target = rc.senseGroundRobotAtLocation(goalLoc);
-		  
+		  //if the leader has no idea where the goal is located
+		  //then let's try to search for a tower ourselves
 		  if (goalLoc == null) {
-		      target = searchForTower();
+		      Robot target = searchForTower();
+		      //if successful, pass on the info
 		      if (target != null) {
-			  targetInfo = rc.senseRobotInfo(target);
+			  RobotInfo targetInfo = rc.senseRobotInfo(target);
 			  if (targetInfo.team != myTeam)
 		      		leaderMsg.locations[1] = targetInfo.location;
 		      }
 		  }
+		  
 		  //splice in the new ID
 		  leaderMsg.ints[0] = rc.getRobot().getID();
+		  //broadcast that
 		  rc.broadcast(leaderMsg);
 		  
-		  if (!working && leaderMsg.locations[1] == null) hunt();
+		  //if nobody senses the tower, move towards it
+		  if (!working && leaderMsg.locations[1] == null && goalDir != null) hunt(goalDir);
+		  
 	      }
-      }       /*  //heal
+	     }
+         
+      /*  //heal
             if (behavior.equals("spawn") && spawnLocation != null){
                 Robot spawnedRobot = rc.senseGroundRobotAtLocation(spawnLocation);
                 if (spawnedRobot != null){
@@ -844,13 +883,13 @@ public class RobotPlayer implements Runnable{
             }
             */
       rc.setIndicatorString(2, behavior);
-          //rc.setIndicatorString(1, " " + following);
       rc.yield();
    
   } catch(Exception e){
       System.out.println("Caught Exception:");
       e.printStackTrace();
   	}
+     }
  }
  
  
