@@ -1,4 +1,5 @@
 package team000;
+
 import java.math.*;
 import battlecode.common.*;
 import static battlecode.common.GameConstants.*;
@@ -84,39 +85,36 @@ public class RobotPlayer implements Runnable{
  /********************
   * Movement Methods
   ********************/
- 
+ boolean isTracing = false;
  //main movement method (uses bug algorithm)
  //takes in a direction and tries to move towards it
- private void hunt(Direction goalDir){
-     try{
-	 
-	 boolean isTracing = false;
-   
-	 //move in the direction of the target
-	 if(rc.canMove(goalDir)){
-	     isTracing = false;
-	     if(rc.getDirection() != goalDir)
-		 rc.setDirection(goalDir);
-	     else if(rc.canMove(rc.getDirection()))
-		 rc.moveForward();
-	 }
-	 //	if there is an obstacle in your way, trace around it
-	 else{
-	     isTracing = true;
-	     if(rc.canMove(goalDir))
-		 isTracing = false;
-	     else 
-		 if(rc.canMove(rc.getDirection()))
-		     rc.moveForward();
-		 else
-		     rc.setDirection(rc.getDirection().rotateRight());
-	 	}
-	 rc.yield();
-     }catch(Exception e){
-	 System.out.println("Caught Exception:");
-	 e.printStackTrace();
-     }
- }
+ private void hunt(Direction goalDir) {
+	try {
+		// move in the direction of the target
+		if(!isTracing){
+			if(rc.getDirection() != goalDir)
+				rc.setDirection(goalDir);
+			else if(rc.canMove(goalDir))
+				rc.moveForward();
+			else
+				isTracing = true;
+		}
+		else{
+			if(rc.canMove(goalDir)){
+				isTracing = false;
+				rc.setDirection(goalDir);
+			}
+			else if(rc.canMove(rc.getDirection()))
+				rc.moveForward();
+			else
+				rc.setDirection(rc.getDirection().rotateRight());
+		}
+		rc.yield();
+	} catch (Exception e) {
+		System.out.println("Caught Exception:");
+		e.printStackTrace();
+	}
+}
  
  /*
   * Judges the direction one should travel to reach the goal.
@@ -389,20 +387,7 @@ public class RobotPlayer implements Runnable{
   }
   return closestArchon;
  }
- 
- private boolean needsHealing(Robot bot){
-  boolean needToHeal = false;
-  try{
-   RobotInfo botInfo = rc.senseRobotInfo(bot);
-   if(botInfo.energonLevel < botInfo.maxEnergon / 2)
-    needToHeal = true;
-  }catch(Exception e){
-   System.out.println("Caught exception:");
-   e.printStackTrace();
-  }
-  return needToHeal;
- }
- 
+  
  private Message findLeaderMessage(Message[] incomingMsgs){
      Message leaderMsg = null;
      try{
@@ -993,32 +978,49 @@ public class RobotPlayer implements Runnable{
      }
  }
  
- 
- /*
-  * Method for the archon to heal a specified bot to the best of its ability.
-  */
- private void archonHeal(Robot hurtBot){
-  try{
-   RobotInfo hurtBotInfo = rc.senseRobotInfo(hurtBot);
-   if(rc.getEnergonLevel() > RobotType.ARCHON.maxEnergon() / 8 &&
-     hurtBotInfo.eventualEnergon < hurtBotInfo.type.maxEnergon()){
-    
-     double energonNeeded = hurtBotInfo.maxEnergon - hurtBotInfo.energonLevel;
-     //if possible, heal hurt bot completely, else contribute all possible
-     // without committing suicide (hence subtracting the archon's energon upkeep)
-     double transferAmount = Math.min(energonNeeded,
-         rc.getEventualEnergonLevel() -
-         RobotType.ARCHON.energonUpkeep());
-     rc.transferEnergon(transferAmount, hurtBotInfo.location,
-       hurtBot.getRobotLevel());
-  
-   }
-   
-  }catch(Exception e){
-   System.out.println("Caught exception:");
-   e.printStackTrace();
-  }
- }
+
+	/*
+	 * Method for the archon to heal a specified bot to the best of its ability.
+	 */
+	private void archonHeal(Robot hurtBot) {
+		try {
+			RobotInfo hurtBotInfo = rc.senseRobotInfo(hurtBot);
+			if (rc.getEnergonLevel() > RobotType.ARCHON.maxEnergon() / 8
+					&& hurtBotInfo.eventualEnergon < hurtBotInfo.type
+							.maxEnergon()) {
+
+				double energonNeeded = hurtBotInfo.maxEnergon
+						- hurtBotInfo.energonLevel;
+				// if possible, heal hurt bot completely, else contribute all
+				// possible
+				// without committing suicide (hence subtracting the archon's
+				// energon upkeep)
+				double transferAmount = Math.min(energonNeeded, rc
+						.getEnergonLevel()
+						- RobotType.ARCHON.energonUpkeep());
+				rc.transferEnergon(transferAmount, hurtBotInfo.location,
+						hurtBot.getRobotLevel());
+
+			}
+
+		} catch (Exception e) {
+			System.out.println("Caught exception:");
+			e.printStackTrace();
+		}
+	}
+
+	private boolean needsHealing(Robot bot) {
+		boolean needToHeal = false;
+		try {
+			RobotInfo botInfo = rc.senseRobotInfo(bot);
+			if (botInfo.energonLevel < botInfo.maxEnergon / 2)
+				needToHeal = true;
+		} catch (Exception e) {
+			System.out.println("Caught exception:");
+			e.printStackTrace();
+		}
+		return needToHeal;
+	}
  
  /*
   * Method for count squad.  Resets variables so another count can be taken.
@@ -1227,34 +1229,3 @@ public class RobotPlayer implements Runnable{
   return farArchonDist;
  }
 }
- 
- 
- 
- 
-//runArchon();
-/*
-MapLocation nextLoc = rc.getLocation().add(rc.getDirection());
-Robot nearBot = rc.senseGroundRobotAtLocation(nextLoc);
-RobotInfo nearBotInfo;
-if(nearBot != null){
- nearBotInfo = rc.senseRobotInfo(nearBot);
- if(nearBotInfo.type == RobotType.ARCHON ||
-   nearBotInfo.type == RobotType.TOWER){
-  rc.setDirection(rc.getDirection().rotateRight());
- }
- //archon heals any weakened bots
- else if(nearBotInfo.type.compareTo(RobotType.ARCHON) !=0 &&
-   nearBotInfo.energonLevel < nearBotInfo.maxEnergon / 2){
-  rc.transferEnergon(rc.getEnergonLevel()/1.5, nextLoc, nearBot.getRobotLevel());
- }
-}
-//archon spawns soldiers if not healing and if it has enough energon
-else if(rc.getEnergonLevel() > RobotType.SOLDIER.spawnCost() &&
-  rc.canSpawn() && !working && rc.getUnitCount(RobotType.SOLDIER) == 0 &&
-  nearBot == null && rc.getTeamUnitCount() < 18){
- rc.spawn(RobotType.SOLDIER);
- rc.yield();
-}
-rc.yield();
-*/
- 
