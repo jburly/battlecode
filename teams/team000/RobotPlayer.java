@@ -15,7 +15,6 @@ public class RobotPlayer implements Runnable {
     private final static int MIN_MORTAR_NUM = 3;
 
     private final static int ARCHONS_PER_TEAM = 4;
-    private final static MapLocation friendlyLocation = new MapLocation(0, 0);
 
     private final static String ATTACK_STRING = "attack";
     private final static String SPAWN_STRING = "spawn";
@@ -235,6 +234,21 @@ public class RobotPlayer implements Runnable {
 	    e.printStackTrace();
 	}
 	return closestTower;
+    }
+    
+    //sees if a tower at a maplocation is allied or not
+    public boolean isAlliedTower(MapLocation m){
+	try {
+	    MapLocation[] allyTowers = rc.senseAlliedTowers();
+	    if (m != null)
+		for (int i = 0; i < allyTowers.length; i++)
+		    if (m.equals(allyTowers[i])) return true;
+	    
+	} catch (Exception e) {
+	    System.out.println("Caught Exception:");
+	    e.printStackTrace();
+	}
+	return false;
     }
 
     /*
@@ -475,7 +489,6 @@ public class RobotPlayer implements Runnable {
 		}
 
 		Message[] incomingMsgs = rc.getAllMessages();
-		// boolean canAttack = false; //if bot can attack the target
 
 		if (fighterMom != null)
 		    leaderMsg = findLeaderMessage(incomingMsgs);
@@ -485,14 +498,6 @@ public class RobotPlayer implements Runnable {
 		if (leaderMsg != null) {
 		    if (leaderMsg.strings[1].equalsIgnoreCase("attack")) {
 			if (leaderMsg.locations[1] != null) {
-			    RobotInfo towerInfo = null;
-			    if (rc.canSenseSquare(leaderMsg.locations[1]))
-				towerInfo = rc
-					.senseRobotInfo(rc
-						.senseGroundRobotAtLocation(leaderMsg.locations[1]));
-
-			    if ((towerInfo != null && towerInfo.team != myTeam)
-				    || towerInfo == null)
 				if (rc.canAttackSquare(leaderMsg.locations[1]))
 				    rc.attackGround(leaderMsg.locations[1]);
 				else {
@@ -625,7 +630,7 @@ public class RobotPlayer implements Runnable {
 		    msg.ints = new int[6];
 		    msg.ints[1] = rc.getRobot().getID(); // leader ID
 		    msg.ints[0] = 1; // the number of bots within the unit so
-				     // far
+		    // far
 		    if (establishLeaderMsg != null)
 			msg.ints[5] = 2;
 		    else
@@ -643,11 +648,10 @@ public class RobotPlayer implements Runnable {
 
     // archon leader action routines
     private void archonLeader() {
-	// int wake_delay = 0;
-	// int start_morph_delay = 0;
+	
 	boolean startOfGame = true;
 	int[] commanders = new int[ARCHONS_PER_TEAM - 1];
-	int finder = 0;
+	
 	while (true) {
 	    try {
 
@@ -655,17 +659,13 @@ public class RobotPlayer implements Runnable {
 			|| rc.getRoundsUntilAttackIdle() != 0
 			|| rc.getRoundsUntilMovementIdle() != 0;
 
-		boolean broadcasted = false;
 		MapLocation commanderTargetLocation = null;
-		// get msgs
-		Message[] incomingMsgs = rc.getAllMessages();
+
 		// parse messages
-		// look for a message from the other leader to establish who it
-		// is
+		Message[] incomingMsgs = rc.getAllMessages();
 		if (incomingMsgs != null) {
-		    boolean ignoreOtherCommanders = false;
 		    for (int i = 0; i < incomingMsgs.length; i++) {
-			// checks if it's a message from another leader
+			// checks for the "commanders"
 			if (incomingMsgs[i].strings[0]
 				.equals("establishLeader")
 				&& incomingMsgs[i].ints[1] == rc.getRobot()
@@ -679,16 +679,8 @@ public class RobotPlayer implements Runnable {
 					    .equals(ATTACK_STRING)
 				    && isCommander(commanders,
 					    incomingMsgs[i].ints[0])
-				    && incomingMsgs[i].locations[1] != null) {
-				if (!ignoreOtherCommanders) {
-				    commanderTargetLocation = incomingMsgs[i].locations[1];
-				    finder = incomingMsgs[i].ints[1];
-				    // if the message is from the finder, it
-				    // gets priority
-				    if (incomingMsgs[i].ints[0] == finder)
-					ignoreOtherCommanders = true;
-				}
-
+				    && incomingMsgs[i].locations[1] != null) { 
+				commanderTargetLocation = incomingMsgs[i].locations[1];
 			    }
 			}
 		    }
@@ -706,9 +698,6 @@ public class RobotPlayer implements Runnable {
 		msg.locations[0] = rc.getLocation();
 		msg.ints[0] = rc.getRobot().getID();
 
-		// System.out.println(start_morph_delay + " " +
-		// Clock.getRoundNum() + " " + wake_delay);
-
 		if (startOfGame == true) {
 		    msg.strings[1] = "idle";
 		    int time = Clock.getRoundNum();
@@ -719,18 +708,11 @@ public class RobotPlayer implements Runnable {
 		} else {
 
 		    countSquad(); // count the number of troops close by
-		    // System.out.println(soldierNum);
+
 		    int soldiersNeeded = 0;
-		    // System.out.println(soldierNum);
+
 		    if (troopNum() < MIN_SOLDIER_NUM) {
 			soldiersNeeded = MIN_SOLDIER_NUM - soldierNum;
-			// if(rc.canSpawn() &&
-			// rc.senseGroundRobotAtLocation(rc.getLocation().add(rc.getDirection()))
-			// == null &&
-			// rc.getEnergonLevel() >
-			// 2*RobotType.SOLDIER.spawnCost()) {
-			// rc.spawn(RobotType.SOLDIER);
-			// soldiersNeeded--;
 			msg.ints[1] = soldiersNeeded;
 			msg.strings[1] = SPAWN_STRING;
 			/*
@@ -740,7 +722,7 @@ public class RobotPlayer implements Runnable {
 			rc.setIndicatorString(0, " " + squadID);
 			rc.setIndicatorString(1, " " + following);
 		    } else {
-			// attack tower mode
+/////////////////////////// attack tower mode \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 			msg.strings[1] = ATTACK_STRING;
 
 			Direction goalDir = null;
@@ -760,10 +742,9 @@ public class RobotPlayer implements Runnable {
 			}
 			// else we didn't find it, so keep moving towards it
 			else {
-			    if (commanderTargetLocation != null) {
+			    if (commanderTargetLocation != null) 
 				msg.locations[1] = commanderTargetLocation;
-				msg.ints[1] = finder;
-			    }
+			    
 			    goalDir = rc.senseClosestUnknownTower();
 			    if (!working && furthestArchonDist() < 8)
 				hunt(goalDir);
@@ -771,10 +752,13 @@ public class RobotPlayer implements Runnable {
 			// we for sure know the direction of the target, so we
 			// pass it on
 			msg.strings[2] = goalDir.toString();
+			if (isAlliedTower(msg.locations[1]))
+			    msg.locations[1] = null;
 		    }
 
 		}
-		if (!broadcasted)
+		//broadcast the message to minions
+		if (!rc.hasBroadcastMessage())
 		    rc.broadcast(msg);
 
 		rc.yield();
@@ -785,6 +769,139 @@ public class RobotPlayer implements Runnable {
 	    }
 	}
     }
+
+    	/*
+         * Routines for Archon Followers
+         */
+        private void archonFollower() {
+    	Direction goalDir = null;
+    	MapLocation goalLoc = null;
+    	int[] commanders = new int[ARCHONS_PER_TEAM - 1];
+    	boolean isFinder = false;
+    	int finder = 0;
+    	while (true) {
+    	    try {
+    		working = rc.isMovementActive()
+    			|| rc.getRoundsUntilAttackIdle() != 0
+    			|| rc.getRoundsUntilMovementIdle() != 0;
+    
+    		// prioritize healing bots in adjacent squares
+    		Robot weakAdjAlly = findWeakestAdjacentBot();
+    		if (weakAdjAlly != null && needsHealing(weakAdjAlly))
+    		    archonHeal(weakAdjAlly);
+    
+    		// get all msgs
+    		Message[] incomingMsgs = rc.getAllMessages();
+    		MapLocation commanderTargetLocation = null;
+    		
+    		if (incomingMsgs != null) {
+    		    for (int i = 0; i < incomingMsgs.length; i++) {
+    			// checks if it's a message from the leader
+    			if (incomingMsgs[i].ints[0] == following)
+    			    leaderMsg = incomingMsgs[i];
+    			else if (incomingMsgs[i].strings[0]
+    				.equals("establishLeader")
+    				&& incomingMsgs[i].ints[1] == following)
+    			    for (int j = 2; j <= ARCHONS_PER_TEAM; j++) {
+    				if (commanders[j-2] == 0)
+    				    commanders[j-2] = incomingMsgs[i].ints[j];
+    			    }
+    			else if (incomingMsgs[i].strings[0].equals("leaderMsg")
+    				&& incomingMsgs[i].strings[1]
+    					.equals(ATTACK_STRING)
+    				&& isCommander(commanders,
+    					incomingMsgs[i].ints[0])
+    				&& incomingMsgs[i].locations[1] != null) {
+    					commanderTargetLocation = incomingMsgs[i].locations[1];
+    			}
+    		    }
+    		}
+    		// get orders and set behaviors accordingly
+    		if (leaderMsg != null) {
+    		    //spawn
+    		    if (leaderMsg.strings[1].equalsIgnoreCase(SPAWN_STRING))
+    			behavior = SPAWN_STRING;
+    		    else
+    			//attack
+    			if (leaderMsg.strings[1]
+    			    .equalsIgnoreCase(ATTACK_STRING)) {
+    
+    			    behavior = ATTACK_STRING;
+    			    // where we're headed from what the leader tells us
+    			    if (goalLoc == null)
+    				goalLoc = leaderMsg.locations[1];
+    			    
+    			    // check if we get a new direction
+    			    if (leaderMsg.strings[2] != null)
+    				goalDir = msgDirection(leaderMsg.strings[2]);
+    		    } else
+    			//idle
+    			if (leaderMsg.strings[1].equalsIgnoreCase("idle"))
+    			    behavior = "idle";
+    
+    		    // spawn
+    		    if (behavior.equals(SPAWN_STRING)) {
+    			MapLocation spawnLoc = spaceToSpawn();
+    			if (rc.canSpawn()
+    				&& spawnLoc != rc.getLocation()
+    				&& rc.getEnergonLevel() > 2 * RobotType.SOLDIER
+    					.spawnCost()) {
+    			    Direction spawnDir = calcDirection(spawnLoc);
+    			    if (spawnDir == rc.getDirection()) {
+    				rc.spawn(RobotType.SOLDIER);
+    				spawnLocation = rc.getLocation().add(
+    					rc.getDirection());
+    			    } else if (!working)
+    				rc.setDirection(spawnDir);
+    			}
+    		    } else
+    //////////////////////////////attack\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+    			if (behavior.equals(ATTACK_STRING)) {
+    		
+    			    // if the leader has no idea where the goal is located
+    			    // then let's try to search for a tower ourselves
+    			    if (goalLoc == null || isFinder) {
+    				Robot target = searchForTower();
+    			    // if successful, pass on the info
+    			    if (target != null) {
+    				RobotInfo targetInfo = rc
+    					.senseRobotInfo(target);
+    				leaderMsg.ints[1] = rc.getRobot().getID();
+    				isFinder = true;
+    				if (targetInfo.team != myTeam) {
+    				    leaderMsg.locations[1] = targetInfo.location;
+    				}
+    			    } 
+    			    else 
+    				if (commanderTargetLocation != null) {
+    				    leaderMsg.locations[1] = commanderTargetLocation;
+    			    }
+    			} 
+    			// splice in the new ID
+    			leaderMsg.ints[0] = rc.getRobot().getID();
+    			// check for allied tower
+    			if (isAlliedTower(leaderMsg.locations[1]))
+    			    leaderMsg.locations[1] = null;
+    			// broadcast that
+    			rc.broadcast(leaderMsg);
+    
+    			// if nobody senses the tower, move towards it
+    			if (!working && leaderMsg.locations[1] == null
+    				&& goalDir != null)
+    			    hunt(goalDir);
+    
+    		    }
+    		}
+    
+    		rc.setIndicatorString(2, isFinder + " ");
+    		rc.yield();
+    
+    	    } catch (Exception e) {
+    		System.out.println("Caught Exception:");
+    		e.printStackTrace();
+    	    }
+    	}
+        }
 
     // looks through the array of commander IDs and sees if the ID is in there
     // (sees if the robot is a commander)
@@ -797,168 +914,6 @@ public class RobotPlayer implements Runnable {
 
     // Archon Follower stuff
     MapLocation spawnLocation = null;
-
-    /*
-     * Routines for Archon Followers
-     */
-    private void archonFollower() {
-	Direction goalDir = null;
-	MapLocation goalLoc = null;
-	int[] commanders = new int[ARCHONS_PER_TEAM - 1];
-	boolean isFinder = false;
-	int finder = 0;
-	while (true) {
-	    try {
-		working = rc.isMovementActive()
-			|| rc.getRoundsUntilAttackIdle() != 0
-			|| rc.getRoundsUntilMovementIdle() != 0;
-
-		// prioritize healing bots in adjacent squares
-		Robot weakAdjAlly = findWeakestAdjacentBot();
-		if (weakAdjAlly != null && needsHealing(weakAdjAlly))
-		    archonHeal(weakAdjAlly);
-
-		// get all msgs
-		Message[] incomingMsgs = rc.getAllMessages();
-		MapLocation commanderTargetLocation = null;
-		// int finder = 0;
-		// leaderMsg = findLeaderMessage(incomingMsgs);
-
-		if (incomingMsgs != null) {
-		    boolean ignoreOtherCommanders = false;
-		    for (int i = 0; i < incomingMsgs.length; i++) {
-			// checks if it's a message from the leader
-			if (incomingMsgs[i].ints[0] == following)
-			    leaderMsg = incomingMsgs[i];
-			else if (incomingMsgs[i].strings[0]
-				.equals("establishLeader")
-				&& incomingMsgs[i].ints[1] == following)
-			    for (int j = 2; j <= ARCHONS_PER_TEAM; j++) {
-				if (commanders[j - 2] == 0)
-				    commanders[j - 2] = incomingMsgs[i].ints[j];
-			    }
-			else if (incomingMsgs[i].strings[0].equals("leaderMsg")
-				&& incomingMsgs[i].strings[1]
-					.equals(ATTACK_STRING)
-				&& isCommander(commanders,
-					incomingMsgs[i].ints[0])
-				&& incomingMsgs[i].locations[1] != null) {
-			    if (!ignoreOtherCommanders) {
-				commanderTargetLocation = incomingMsgs[i].locations[1];
-				finder = incomingMsgs[i].ints[1];
-			    }
-			    if (incomingMsgs[i].ints[1] == finder) {
-				ignoreOtherCommanders = true;
-			    }
-			}
-		    }
-		}
-		// get orders
-		if (leaderMsg != null) {
-		    // if(distanceFrom(leaderMsg.locations[0]) >=
-		    // RobotType.ARCHON.broadcastRadius()){
-		    // goalDir = calcDirection(leaderMsg.locations[0]);
-		    // behavior = "followLeader";
-		    // hunt();
-		    // }
-
-		    if (leaderMsg.strings[1].equalsIgnoreCase(SPAWN_STRING))
-			behavior = "spawn";
-		    else if (leaderMsg.strings[1]
-			    .equalsIgnoreCase(ATTACK_STRING)) {
-
-			behavior = "attack";
-			// where we're headed from what the leader tells us
-			if (goalLoc == null)
-			    goalLoc = leaderMsg.locations[1];
-
-			// check if we get a new direction
-			if (leaderMsg.strings[2] != null)
-			    goalDir = msgDirection(leaderMsg.strings[2]);
-		    } else if (leaderMsg.strings[1].equalsIgnoreCase("idle"))
-			behavior = "idle";
-
-		    // spawn
-		    if (behavior.equals(SPAWN_STRING)) {
-			MapLocation spawnLoc = spaceToSpawn();
-			if (rc.canSpawn()
-				&& spawnLoc != rc.getLocation()
-				&& rc.getEnergonLevel() > 2 * RobotType.SOLDIER
-					.spawnCost()) {
-			    Direction spawnDir = calcDirection(spawnLoc);
-			    if (spawnDir == rc.getDirection()) {
-				rc.spawn(RobotType.SOLDIER);
-				spawnLocation = rc.getLocation().add(
-					rc.getDirection());
-			    } else if (!working)
-				rc.setDirection(spawnDir);
-			}
-		    } else if (behavior.equals(ATTACK_STRING)) {
-			// if the leader has no idea where the goal is located
-			// then let's try to search for a tower ourselves
-			if (goalLoc == null || isFinder) {
-			    Robot target = searchForTower();
-			    // if successful, pass on the info
-			    if (target != null) {
-				RobotInfo targetInfo = rc
-					.senseRobotInfo(target);
-				leaderMsg.ints[1] = rc.getRobot().getID();
-				isFinder = true;
-				System.out.println(targetInfo.team);
-				if (targetInfo.team != myTeam) {
-				    leaderMsg.locations[1] = targetInfo.location;
-				}
-			    } else
-			    // our roobot is the finder and the location is
-			    // null,
-			    // so we conquered the tower
-			    if (isFinder) {
-				leaderMsg.locations[1] = friendlyLocation;
-				System.out.println("it's friendly");
-			    } else if (commanderTargetLocation != null) {
-				leaderMsg.locations[1] = commanderTargetLocation;
-				leaderMsg.ints[1] = finder;
-			    }
-			} else if (goalLoc.equals(friendlyLocation)) {
-			    finder = 0;
-			    leaderMsg.locations[1] = null;
-			}
-
-			// splice in the new ID
-			leaderMsg.ints[0] = rc.getRobot().getID();
-			// broadcast that
-			rc.broadcast(leaderMsg);
-
-			// if nobody senses the tower, move towards it
-			if (!working && leaderMsg.locations[1] == null
-				&& goalDir != null)
-			    hunt(goalDir);
-
-		    } else if (behavior.equals("idle")) {
-			// splice in the new ID
-			leaderMsg.ints[0] = rc.getRobot().getID();
-			// broadcast that
-			rc.broadcast(leaderMsg);
-		    }
-		}
-
-		/*
-		 * //heal if (behavior.equals("spawn") && spawnLocation !=
-		 * null){ Robot spawnedRobot =
-		 * rc.senseGroundRobotAtLocation(spawnLocation); if
-		 * (spawnedRobot != null){ archonHeal(spawnedRobot); } } else{
-		 * Robot weakestAdjAlly = findWeakestAdjacentBot(); if
-		 * (weakestAdjAlly != null){ archonHeal(weakestAdjAlly); } }
-		 */
-		rc.setIndicatorString(2, isFinder + " ");
-		rc.yield();
-
-	    } catch (Exception e) {
-		System.out.println("Caught Exception:");
-		e.printStackTrace();
-	    }
-	}
-    }
 
     /*
      * Method for the archon to heal a specified bot to the best of its ability.
@@ -1068,7 +1023,7 @@ public class RobotPlayer implements Runnable {
 	boolean isNEmpty = false, isSEmpty = false, isEEmpty = false, isWEmpty = false, isNEEmpty = false, isNWEmpty = false, isSEEmpty = false, isSWEmpty = false;
 	try {
 	    MapLocation currLoc = rc.getLocation(); // current locatoin of
-						    // archon
+	    // archon
 
 	    // whether or not there is a ground robot in all directions
 	    isNEmpty = rc.senseGroundRobotAtLocation(currLoc
