@@ -627,9 +627,10 @@ public class RobotPlayer implements Runnable {
 		    findMotherBot();
 
 		if (leaderMsg != null) {
-		    if (rc.getEventualEnergonLevel() < rc.getMaxEnergonLevel() * LOW_HEALTH_MULTIPLIER){
+		    if (rc.getEventualEnergonLevel() <= rc.getMaxEnergonLevel() * LOW_HEALTH_MULTIPLIER){
 			if (leaderMsg.locations[1] != null){
-			    if (rc.canAttackSquare(leaderMsg.locations[1]))
+			    if (rc.canAttackSquare(leaderMsg.locations[1]) && 
+				    rc.canMove(rc.getDirection().opposite()))
 				rc.moveBackward();
 			}
 		    }
@@ -687,14 +688,16 @@ public class RobotPlayer implements Runnable {
 		Message[] incomingMsgs = rc.getAllMessages();
 		if (incomingMsgs != null) {
 		    for (int i = 0; i < incomingMsgs.length; i++) {
-			if (incomingMsgs[i].strings[0].equals("leaderMsg")) {
+			if (incomingMsgs[i].strings != null && 
+				incomingMsgs[i].strings[0].equals("leaderMsg")) {
 			    if (incomingMsgs[i].strings[1].equals(ATTACK_STRING) && 
 				    incomingMsgs[i].locations[1] != null){
 				alliedLeaderTower = incomingMsgs[i].locations[1]; 
 			    }
 			}
 			else
-			    if (incomingMsgs[i].strings[0].equals("scoutTowerLocation"))
+			    if (incomingMsgs[i].strings != null && 
+				    incomingMsgs[i].strings[0].equals("scoutTowerLocation"))
 				alliedLeaderTower = incomingMsgs[i].locations[0];
 		    }
 		}
