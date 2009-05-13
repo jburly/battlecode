@@ -610,26 +610,66 @@ public class RobotPlayer implements Runnable {
 	}
     }
 
+    private Robot findMyMortar(){
+	
+    }
+    
     // archon variables
     private boolean leader = false;
-
+    
     private void archon() {
-	try {
-	    // establish leadership if it has yet to be done
-	    if (following == 0 && leader == false) {
-		designateLeader();
-		rc.setIndicatorString(1, " " + following);
-		rc.setIndicatorString(0, " " + leader);
+	
+	boolean startOfGame = true;
+	String behavior = "nothing";
+	int myMortarID = 0;
+	while (true)
+	    try {
+	    
+	    working = rc.isMovementActive()
+		|| rc.getRoundsUntilAttackIdle() != 0
+		|| rc.getRoundsUntilMovementIdle() != 0;
+	
+	
+	// prepare the message
+	Message msg = new Message();
+	msg.strings = new String[3];
+	msg.locations = new MapLocation[2];
+	msg.ints = new int[2];
+
+	// you're the leader, add the location to the broadcast
+	msg.strings[0] = "leaderMsg";
+	msg.strings[1] = "idle";
+	msg.locations[0] = rc.getLocation();
+	msg.ints[0] = rc.getRobot().getID();
+
+	if (startOfGame == true) {
+	    msg.strings[1] = "idle";
+	    int time = Clock.getRoundNum();
+	    if (time < 70)
+		behavior = SPAWN_STRING;
+	    if (time >= 150)
+		startOfGame = false;
+	}
+	
+	if (behavior.equals(SPAWN_STRING)) {
+		MapLocation spawnLoc = spaceToSpawn();
+		if (rc.canSpawn()
+			&& spawnLoc != rc.getLocation()
+			&& rc.getEnergonLevel() > 2 * RobotType.SOLDIER
+				.spawnCost()) {
+		    Direction spawnDir = calcDirection(spawnLoc);
+		    if (spawnDir == rc.getDirection()) {
+			rc.spawn(RobotType.SOLDIER);
+			spawnLocation = rc.getLocation().add(
+				rc.getDirection());
+		    } else if (!working)
+			rc.setDirection(spawnDir);
+		}
 	    }
-
-	    // if you are a leader, perform your leader duties
-	    if (leader == true)
-		archonLeader();
-
-	    // else if you are a follower, act accordingly
-	    else if (following != 0)
-		archonFollower();
-
+	    
+	rc.broadcast(msg);
+	rc.yield();
+	    
 	} catch (Exception e) {
 	    System.out.println("caught exception:");
 	    e.printStackTrace();
