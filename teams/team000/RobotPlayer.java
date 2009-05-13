@@ -449,7 +449,8 @@ public class RobotPlayer implements Runnable {
 	    if (incomingMsgs != null) {
 		for (int i = 0; i < incomingMsgs.length; i++) {
 		    // checks if it's a message from the leader
-		    if (incomingMsgs[i].ints[0] == following)
+		    if (incomingMsgs[i].ints != null && 
+			    incomingMsgs[i].ints[0] == following)
 			leaderMsg = incomingMsgs[i];
 		}
 	    }
@@ -515,8 +516,17 @@ public class RobotPlayer implements Runnable {
 				    myMortar = findRobotWithID(incomingMsgs[i].ints[1]);
 			    }
 			}
+		    /*
+		    if(fighterMom == null || myMortar == null){
+			Message m = new Message();
+			m.strings = new String[1];
+			m.strings[0] = "needMom";
+			rc.broadcast(m);
+		    }
+		    */
 		}
 		else {
+		    
 		    if (rc.getEnergonLevel() > rc.getMaxEnergonLevel() * LOW_HEALTH_MULTIPLIER &&
 			    rc.canSenseObject(myMortar)){
 			MapLocation mortarLoc = rc.senseRobotInfo(myMortar).location; 
@@ -532,6 +542,17 @@ public class RobotPlayer implements Runnable {
 				hunt(calcDirection(archonLoc));
 			}
 		    }
+		}
+		
+		Robot target = searchForTower();
+		if (target != null) {
+		    Message m = new Message();
+		    m.strings = new String[1];
+		    m.strings[0] = "scoutTowerLocation";
+		    m.locations = new MapLocation[1];
+		
+		    m.locations[0] = rc.senseRobotInfo(target).location;
+		    rc.broadcast(m);
 		}
 		
 		rc.setIndicatorString(0, following + " ");
@@ -605,14 +626,14 @@ public class RobotPlayer implements Runnable {
 		else
 		    findMotherBot();
 
-		if (leaderMsg != null) {/*
-		    if (rc.getEventualEnergonLevel() < rc.getMaxEnergonLevel() * MEDIUM_HEALTH_MULTIPLIER){
+		if (leaderMsg != null) {
+		    if (rc.getEventualEnergonLevel() < rc.getMaxEnergonLevel() * LOW_HEALTH_MULTIPLIER){
 			if (leaderMsg.locations[1] != null){
 			    if (rc.canAttackSquare(leaderMsg.locations[1]))
-				hunt(calcDirection(leaderMsg.locations[1]).opposite());
+				rc.moveBackward();
 			}
 		    }
-		    else*/
+		    else
 		    if (leaderMsg.strings[1].equalsIgnoreCase("attack")) {
 			if (leaderMsg.locations[1] != null) {
 				if (rc.canAttackSquare(leaderMsg.locations[1]))
@@ -627,35 +648,7 @@ public class RobotPlayer implements Runnable {
 				hunt(goalDir);
 			}
 		    }
-		    /*
-		     * goalDir = msgDirection(leaderMsg.strings[2]); MapLocation
-		     * goalLoc = leaderMsg.locations[1]; if(goalLoc != null &&
-		     * rc.canSenseSquare(goalLoc)) target =
-		     * rc.senseGroundRobotAtLocation(goalLoc); } //move unless
-		     * needs to be healed if(haveTarget() &&
-		     * rc.getEnergonLevel() > rc.getMaxEnergonLevel() / 2){
-		     * boolean canAttack =
-		     * rc.canAttackSquare(targetInfo.location); //targetInfo =
-		     * rc.senseRobotInfo(target); if(canAttack &&
-		     * targetInfo.team != myTeam){
-		     * rc.attackGround(targetInfo.location); }
-		     */
-		    // else if(rc.canMove(rc.getDirection().opposite()) &&
-		    // !movedBack){
-		    // rc.moveBackward();
-		    // movedBack = true;
-		    // }
-		    //    
-		    // if(targetInfo.team == myTeam){
-		    // target = null;
-		    // targetInfo = null;
-		    // }
-		    // else
-		    // hunt();
 		}
-		// else if(rc.getRoundsUntilMovementIdle() == 0 && !canAttack)
-		// hunt();
-
 		rc.yield();
 	    } catch (Exception e) {
 		System.out.println("caught exception:");
@@ -694,11 +687,15 @@ public class RobotPlayer implements Runnable {
 		Message[] incomingMsgs = rc.getAllMessages();
 		if (incomingMsgs != null) {
 		    for (int i = 0; i < incomingMsgs.length; i++) {
-			if (incomingMsgs[i].strings[0].equals("leaderMsg"))
+			if (incomingMsgs[i].strings[0].equals("leaderMsg")) {
 			    if (incomingMsgs[i].strings[1].equals(ATTACK_STRING) && 
 				    incomingMsgs[i].locations[1] != null){
 				alliedLeaderTower = incomingMsgs[i].locations[1]; 
 			    }
+			}
+			else
+			    if (incomingMsgs[i].strings[0].equals("scoutTowerLocation"))
+				alliedLeaderTower = incomingMsgs[i].locations[0];
 		    }
 		}
 
