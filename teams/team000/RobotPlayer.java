@@ -75,6 +75,9 @@ public class RobotPlayer implements Runnable {
 		case SNIPER:
 		    sniper();
 		    break;
+		case TOWER:
+		    tower();
+		    break;
 		}
 		rc.yield();
 		/*** end of main loop ***/
@@ -456,30 +459,90 @@ public class RobotPlayer implements Runnable {
 	}
 	return leaderMsg;
     }
+    
+    public Robot findRobotWithID(int ID){
+	try {
+	    Robot[] nearGroundBots = rc.senseNearbyGroundRobots();
+	    // search for ground bots no matter what, they should exist
+	    for (int i = 0; i < nearGroundBots.length; i++) {
+		if (nearGroundBots[i].getID() == ID)
+		    return nearGroundBots[i];
+	    }
+	}
+	catch (Exception e) {
+	    System.out.println("Caught exception:");
+	    e.printStackTrace();
+	}
+	return null;
+    }
 
     /*************************
      * BOT ROUTINES
      *************************/
+    
+    private void tower() {
+	while(true){
+	    try {
+		System.out.println("I am a tower, yo ho ho");
+	    }
+	    catch (Exception e) {
+		System.out.println("caught exception");
+		e.printStackTrace();
+	    }
+	}
+    }
 
     // non-archon bot's leader
     private Robot fighterMom = null; // the archon the soldier should follow
 
     private void scout() {
-	try {/*
-	      * if(fighterMom == null) findMotherBot();
-	      * 
-	      * 
-	      * Robot airFoe = searchForAirEnemy(); if(airFoe != null){ target =
-	      * airFoe; targetInfo = rc.senseRobotInfo(airFoe); }
-	      * if(haveTarget()) if(rc.canAttackSquare(targetInfo.location) &&
-	      * targetInfo.team != myTeam) if(targetInfo.type ==
-	      * RobotType.BOMBER || targetInfo.type == RobotType.SCOUT)
-	      * rc.attackAir(targetInfo.location); else
-	      * rc.attackGround(targetInfo.location); hunt();
-	      */
-	} catch (Exception e) {
-	    System.out.println("caught exception");
-	    e.printStackTrace();
+	Robot myMortar = null; 
+	while(true){
+	    try {
+		while (rc.isMovementActive() || rc.isAttackActive()) {
+		    rc.yield();
+		}
+
+		Message[] incomingMsgs = rc.getAllMessages();
+
+		if (fighterMom == null || myMortar == null) {
+		    if (incomingMsgs != null)
+			for (int i = 0; i < incomingMsgs.length; i++){
+			    if (incomingMsgs[i].ints[2] == rc.getRobot().getID()){
+				following = incomingMsgs[i].ints[0];
+				fighterMom = findRobotWithID(following);
+				if (incomingMsgs[i].ints[0] != 0)
+				    myMortar = findRobotWithID(incomingMsgs[i].ints[1]);
+			    }
+			}
+		}
+		else {
+		    if (rc.getEnergonLevel() > rc.getMaxEnergonLevel() * LOW_HEALTH_MULTIPLIER &&
+			    rc.canSenseObject(myMortar)){
+			MapLocation mortarLoc = rc.senseRobotInfo(myMortar).location; 
+			if (distanceFrom(mortarLoc) < 1.75)
+			    scoutHeal(myMortar);
+			else 
+			    hunt(calcDirection(mortarLoc));
+		    }
+		    else  {
+			if (rc.canSenseObject(fighterMom)) {
+			    MapLocation archonLoc = rc.senseRobotInfo(fighterMom).location;
+			    if (distanceFrom(archonLoc) > 1.75)
+				hunt(calcDirection(archonLoc));
+			}
+		    }
+		}
+		
+		rc.setIndicatorString(0, following + " ");
+		if (myMortar != null)
+		    rc.setIndicatorString(1, myMortar.getID() + " ");
+		
+		rc.yield();
+	    } catch (Exception e) {
+		System.out.println("caught exception");
+		e.printStackTrace();
+	    }
 	}
     }
 
@@ -610,70 +673,180 @@ public class RobotPlayer implements Runnable {
 	}
     }
 
-    private Robot findMyMortar(){
-	
-    }
     
     // archon variables
     private boolean leader = false;
     
     private void archon() {
-	
+	MapLocation goalLoc = null;
 	boolean startOfGame = true;
-	String behavior = "nothing";
-	int myMortarID = 0;
+	Robot myMortar = null;
+	Robot myScout = null;
 	while (true)
 	    try {
-	    
-	    working = rc.isMovementActive()
+		String behavior = "nothing";
+		MapLocation alliedLeaderTower = null;
+
+		working = rc.isMovementActive()
 		|| rc.getRoundsUntilAttackIdle() != 0
 		|| rc.getRoundsUntilMovementIdle() != 0;
-	
-	
-	// prepare the message
-	Message msg = new Message();
-	msg.strings = new String[3];
-	msg.locations = new MapLocation[2];
-	msg.ints = new int[2];
 
-	// you're the leader, add the location to the broadcast
-	msg.strings[0] = "leaderMsg";
-	msg.strings[1] = "idle";
-	msg.locations[0] = rc.getLocation();
-	msg.ints[0] = rc.getRobot().getID();
-
-	if (startOfGame == true) {
-	    msg.strings[1] = "idle";
-	    int time = Clock.getRoundNum();
-	    if (time < 70)
-		behavior = SPAWN_STRING;
-	    if (time >= 150)
-		startOfGame = false;
-	}
-	
-	if (behavior.equals(SPAWN_STRING)) {
-		MapLocation spawnLoc = spaceToSpawn();
-		if (rc.canSpawn()
-			&& spawnLoc != rc.getLocation()
-			&& rc.getEnergonLevel() > 2 * RobotType.SOLDIER
-				.spawnCost()) {
-		    Direction spawnDir = calcDirection(spawnLoc);
-		    if (spawnDir == rc.getDirection()) {
-			rc.spawn(RobotType.SOLDIER);
-			spawnLocation = rc.getLocation().add(
-				rc.getDirection());
-		    } else if (!working)
-			rc.setDirection(spawnDir);
+		Message[] incomingMsgs = rc.getAllMessages();
+		if (incomingMsgs != null) {
+		    for (int i = 0; i < incomingMsgs.length; i++) {
+			if (incomingMsgs[i].strings[0].equals("leaderMsg"))
+			    if (incomingMsgs[i].strings[1].equals(ATTACK_STRING) && 
+				    incomingMsgs[i].locations[1] != null){
+				alliedLeaderTower = incomingMsgs[i].locations[1]; 
+			    }
+		    }
 		}
+
+		// prepare the message
+		Message msg = new Message();
+		msg.strings = new String[3];
+		msg.locations = new MapLocation[2];
+		msg.ints = new int[3];
+
+		// you're the leader, add the location to the broadcast
+		msg.strings[0] = "leaderMsg";
+		msg.strings[1] = "idle";
+		msg.locations[0] = rc.getLocation();
+		msg.ints[0] = rc.getRobot().getID();
+		if (myMortar != null)
+		    msg.ints[1] = myMortar.getID();
+		if (myScout != null)
+		    msg.ints[2] = myScout.getID();
+		
+		if (startOfGame == true) {
+		    msg.strings[1] = "idle";
+		    int time = Clock.getRoundNum();
+		    if (time < 50)
+			behavior = SPAWN_STRING;
+		    if (time >= 170) {
+			behavior = ATTACK_STRING;
+		    }
+		}
+		
+		if (myScout != null && rc.canSenseObject(myScout)){
+		    RobotInfo scoutInfo = rc.senseRobotInfo(myScout);
+		    if (distanceFrom(scoutInfo.location) < 1.75){
+			archonHeal(myScout);
+		    }
+		}
+		else
+		    if (rc.canSpawn())
+			behavior = "spawnScout";
+
+
+		if (myMortar != null && rc.canSenseObject(myMortar)){
+		    RobotInfo mortarInfo = rc.senseRobotInfo(myMortar);
+		    if (distanceFrom(mortarInfo.location) < 1.75){
+			archonHeal(myMortar);
+		    }
+		    else 
+			if (mortarInfo.eventualEnergon <= mortarInfo.maxEnergon * .8)
+			    if (!working) {
+				hunt(calcDirection(mortarInfo.location));
+				working = true;
+			    }
+		}
+		else
+		    if (!behavior.equals("spawnScout"))
+		    	behavior = "spawnMortar";
+		
+		
+		if (behavior.equals("spawnMortar")) {
+		    MapLocation spawnLoc = spaceToSpawn();
+		    if (rc.canSpawn()){
+			if (spawnLoc != rc.getLocation()
+				&& rc.getEnergonLevel() > 2 * RobotType.SOLDIER
+				.spawnCost()) {
+			    Direction spawnDir = calcDirection(spawnLoc);
+			    if (spawnDir == rc.getDirection()) {
+				rc.spawn(RobotType.SOLDIER);
+				spawnLocation = rc.getLocation().add(
+					rc.getDirection());
+				rc.yield();
+				myMortar = rc.senseGroundRobotAtLocation(spawnLocation);
+			    } else if (!working)
+				rc.setDirection(spawnDir);
+			}
+		    }
+		    else
+			if (!working)
+			    hunt(calcDirection(nearestAlliedTower()));
+		}
+		
+		if (behavior.equals("spawnScout")) {
+		    MapLocation spawnLoc = airSpaceToSpawn();
+		    if (rc.canSpawn()){
+			if (spawnLoc != rc.getLocation()
+				&& rc.getEnergonLevel() > 2 * RobotType.SOLDIER
+				.spawnCost()) {
+			    Direction spawnDir = calcDirection(spawnLoc);
+			    if (spawnDir == rc.getDirection()) {
+				rc.spawn(RobotType.SCOUT);
+				spawnLocation = rc.getLocation().add(
+					rc.getDirection());
+				rc.yield();
+				myScout = rc.senseAirRobotAtLocation(spawnLocation);
+			    } else if (!working)
+				rc.setDirection(spawnDir);
+			}
+		    }
+		}
+
+
+		if (behavior.equals(ATTACK_STRING)) {
+		    msg.strings[1] = ATTACK_STRING;
+		    Direction goalDir = null;
+		    // if the leader has no idea where the goal is located
+		    // then let's try to search for a tower ourselves
+		    if (goalLoc == null) {
+			Robot target = searchForTower();
+			// if successful, pass on the info
+			if (target != null) {
+			    RobotInfo targetInfo = rc.senseRobotInfo(target);
+			    //msg.ints[1] = rc.getRobot().getID();
+			    //isFinder = true;
+			    if (targetInfo.team != myTeam) {
+				goalLoc = targetInfo.location;
+			    }
+			} 
+		    }
+
+		    if (goalLoc == null && alliedLeaderTower != null)
+			goalLoc = alliedLeaderTower;
+		    
+		    // check for allied tower
+		    if (isAlliedTower(goalLoc))
+			goalLoc = null;
+		    // broadcast that
+		    
+		    if (goalLoc == null)
+			goalDir = rc.senseClosestUnknownTower();
+		    else 
+			goalDir = calcDirection(goalLoc);
+
+		    msg.locations[1] = goalLoc;
+		    msg.strings[2] = goalDir.toString(); 
+		    
+		    // if nobody senses the tower, move towards it
+		    if (!working && msg.locations[1] == null
+			    && goalDir != null)
+			hunt(goalDir);
+
+		}
+
+		rc.setIndicatorString(0, behavior);
+		rc.broadcast(msg);
+		rc.yield();
+
+	    } catch (Exception e) {
+		System.out.println("caught exception:");
+		e.printStackTrace();
 	    }
-	    
-	rc.broadcast(msg);
-	rc.yield();
-	    
-	} catch (Exception e) {
-	    System.out.println("caught exception:");
-	    e.printStackTrace();
-	}
     }
 
     /******************************
@@ -1107,6 +1280,32 @@ public class RobotPlayer implements Runnable {
 	    e.printStackTrace();
 	}
     }
+    
+    private void scoutHeal(Robot hurtBot) {
+	try {
+	    RobotInfo hurtBotInfo = rc.senseRobotInfo(hurtBot);
+	    if (rc.getEnergonLevel() > RobotType.SCOUT.maxEnergon() / 8
+		    && hurtBotInfo.eventualEnergon < hurtBotInfo.type
+			    .maxEnergon()) {
+
+		double energonNeeded = hurtBotInfo.maxEnergon
+			- hurtBotInfo.eventualEnergon;
+		// if possible, heal hurt bot completely, else contribute all
+		// possible
+		// without committing suicide (hence subtracting the archon's
+		// energon upkeep)
+		double transferAmount = Math.min(energonNeeded, rc.getEnergonLevel() * .8);
+		rc.transferEnergon(transferAmount, hurtBotInfo.location,
+			hurtBot.getRobotLevel());
+
+	    }
+
+	} catch (Exception e) {
+	    System.out.println("Caught exception:");
+	    e.printStackTrace();
+	}
+    }
+
 
     private boolean needsHealing(Robot bot) {
 	boolean needToHeal = false;
@@ -1269,6 +1468,51 @@ public class RobotPlayer implements Runnable {
 	return currLoc;
     }
 
+    private MapLocation airSpaceToSpawn() {
+	MapLocation currLoc = null;
+	try {
+	    currLoc = rc.getLocation(); // current location of archon
+
+	    // the can move part makes sure there is not a generic obstacle at
+	    // the
+	    // particular adjacent location
+	    if (rc.senseAirRobotAtLocation(currLoc.add(Direction.NORTH)) == null)
+		return currLoc.add(Direction.NORTH);
+
+	    else if (rc
+		    .senseAirRobotAtLocation(currLoc.add(Direction.SOUTH)) == null)
+		return currLoc.add(Direction.SOUTH);
+
+	    else if (rc.senseAirRobotAtLocation(currLoc.add(Direction.EAST)) == null)
+		return currLoc.add(Direction.EAST);
+
+	    else if (rc.senseAirRobotAtLocation(currLoc.add(Direction.WEST)) == null)
+		return currLoc.add(Direction.WEST);
+
+	    else if (rc.senseAirRobotAtLocation(currLoc
+		    .add(Direction.NORTH_EAST)) == null)
+		return currLoc.add(Direction.NORTH_EAST);
+
+	    else if (rc.senseAirRobotAtLocation(currLoc
+		    .add(Direction.NORTH_WEST)) == null)
+		return currLoc.add(Direction.NORTH_WEST);
+
+	    else if (rc.senseAirRobotAtLocation(currLoc
+		    .add(Direction.SOUTH_EAST)) == null)
+		return currLoc.add(Direction.SOUTH_EAST);
+
+	    else if (rc.senseAirRobotAtLocation(currLoc
+		    .add(Direction.SOUTH_WEST)) == null)
+		return currLoc.add(Direction.SOUTH_WEST);
+	} catch (Exception e) {
+	    System.out.println("Caught Exception:");
+	    e.printStackTrace();
+	}
+	return currLoc;
+    }
+
+    
+    
     /**
      * Other Bot SubRoutines
      */
