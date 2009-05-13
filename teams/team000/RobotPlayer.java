@@ -1,6 +1,7 @@
 package team000;
 
 import java.math.*;
+import java.util.Vector;
 import battlecode.common.*;
 import static battlecode.common.GameConstants.*;
 
@@ -15,9 +16,13 @@ public class RobotPlayer implements Runnable {
     private final static int MIN_MORTAR_NUM = 3;
 
     private final static int ARCHONS_PER_TEAM = 4;
+    private final static int MAX_DIST_FROM_LEADER = 8;
 
     private final static String ATTACK_STRING = "attack";
     private final static String SPAWN_STRING = "spawn";
+    
+    private final static double CRIT_HEALTH_MULTIPLIER = .2;
+    private final static double LOW_HEALTH_MULTIPLIER = .4;
 
     // whether or not the team has any air units
     // initially, we have none
@@ -278,18 +283,17 @@ public class RobotPlayer implements Runnable {
     /*
      * Finds the weakest ally in range.For archons to know who to heal.
      */
-    private Robot findWeakestAlly() {
+    private Robot[] findCritHealthAllies() {
 	Robot[] nearGroundBots = rc.senseNearbyGroundRobots();
-	Robot weakestBot = null;
+	Vector<Robot> weakestBots = new Vector<Robot>(2,1);
 	try {
 	    // search for ground bots no matter what, they should exist
 	    for (int i = 0; i < nearGroundBots.length; i++) {
 		RobotInfo botInfo = rc.senseRobotInfo(nearGroundBots[i]);
-		if (botInfo.team == rc.getTeam()) {
-		    if (weakestBot == null)
-			weakestBot = nearGroundBots[i];
-		    else if (rc.senseRobotInfo(weakestBot).energonLevel > botInfo.energonLevel)
-			weakestBot = nearGroundBots[i];
+		if (botInfo.team == rc.getTeam() && !(botInfo.type == RobotType.ARCHON)) {
+		    if (botInfo.eventualEnergon <= botInfo.maxEnergon * CRIT_HEALTH_MULTIPLIER){
+			weakestBots.add(nearGroundBots[i]);
+		    }
 		}
 	    }
 	    // air bots might not exist so...
@@ -299,11 +303,10 @@ public class RobotPlayer implements Runnable {
 		Robot[] nearAirBots = rc.senseNearbyAirRobots();
 		for (int i = 0; i < nearAirBots.length; i++) {
 		    RobotInfo botInfo = rc.senseRobotInfo(nearAirBots[i]);
-		    if (botInfo.team == rc.getTeam()) {
-			if (weakestBot == null)
-			    weakestBot = nearGroundBots[i];
-			else if (rc.senseRobotInfo(weakestBot).energonLevel > botInfo.energonLevel)
-			    weakestBot = nearGroundBots[i];
+		    if (botInfo.team == rc.getTeam() && !(botInfo.type == RobotType.ARCHON)){
+			if (botInfo.eventualEnergon <= botInfo.maxEnergon * CRIT_HEALTH_MULTIPLIER){
+			    weakestBots.add(nearGroundBots[i]);
+			}
 		    }
 		}
 	    }
@@ -311,9 +314,51 @@ public class RobotPlayer implements Runnable {
 	    System.out.println("caught exception:");
 	    e.printStackTrace();
 	}
-	return weakestBot;
+	Robot[] a = new Robot[0];
+	return weakestBots.toArray(a);
     }
-
+    
+    /*
+     * Finds the weakest ally in range.For archons to know who to heal.
+     */
+    private Robot[] findLowHealthAllies() {
+	Robot[] nearGroundBots = rc.senseNearbyGroundRobots();
+	Vector<Robot> weakestBots = new Vector<Robot>(3,1);
+	try {
+	    // search for ground bots no matter what, they should exist
+	    for (int i = 0; i < nearGroundBots.length; i++) {
+		RobotInfo botInfo = rc.senseRobotInfo(nearGroundBots[i]);
+		if (botInfo.team == rc.getTeam() && !(botInfo.type == RobotType.ARCHON)) {
+		    if (botInfo.eventualEnergon > botInfo.maxEnergon * CRIT_HEALTH_MULTIPLIER &&
+			    botInfo.eventualEnergon <= botInfo.maxEnergon * LOW_HEALTH_MULTIPLIER){
+			weakestBots.add(nearGroundBots[i]);
+		    }
+		}
+	    }
+	    // air bots might not exist so...
+	    // might want to make this conditional on whether we still need
+	    // air bots or not -- no sense healing what we don't need
+	    if (haveAirUnits) {
+		Robot[] nearAirBots = rc.senseNearbyAirRobots();
+		for (int i = 0; i < nearAirBots.length; i++) {
+		    RobotInfo botInfo = rc.senseRobotInfo(nearAirBots[i]);
+		    if (botInfo.team == rc.getTeam() && !(botInfo.type == RobotType.ARCHON)){
+			if (botInfo.eventualEnergon > botInfo.maxEnergon * CRIT_HEALTH_MULTIPLIER &&
+				    botInfo.eventualEnergon <= botInfo.maxEnergon * LOW_HEALTH_MULTIPLIER){
+			    weakestBots.add(nearGroundBots[i]);
+			}
+		    }
+		}
+	    }
+	} catch (Exception e) {
+	    System.out.println("caught exception:");
+	    e.printStackTrace();
+	}
+	Robot[] a = new Robot[0];
+	return weakestBots.toArray(a);
+    }
+    
+    
     private Robot findWeakestAdjacentBot() {
 	Robot[] nearGroundBots = rc.senseNearbyGroundRobots();
 	Robot weakestBot = null;
@@ -487,6 +532,8 @@ public class RobotPlayer implements Runnable {
 		while (rc.isMovementActive() || rc.isAttackActive()) {
 		    rc.yield();
 		}
+		//while (rc.getEventualEnergonLevel() < rc.getMaxEnergonLevel() * CRIT_HEALTH_MULTIPLIER)
+		  //  rc.yield();
 
 		Message[] incomingMsgs = rc.getAllMessages();
 
@@ -495,7 +542,14 @@ public class RobotPlayer implements Runnable {
 		else
 		    findMotherBot();
 
-		if (leaderMsg != null) {
+		if (leaderMsg != null) {/*
+		    if (rc.getEventualEnergonLevel() < rc.getMaxEnergonLevel() * MEDIUM_HEALTH_MULTIPLIER){
+			if (leaderMsg.locations[1] != null){
+			    if (rc.canAttackSquare(leaderMsg.locations[1]))
+				hunt(calcDirection(leaderMsg.locations[1]).opposite());
+			}
+		    }
+		    else*/
 		    if (leaderMsg.strings[1].equalsIgnoreCase("attack")) {
 			if (leaderMsg.locations[1] != null) {
 				if (rc.canAttackSquare(leaderMsg.locations[1]))
@@ -558,7 +612,6 @@ public class RobotPlayer implements Runnable {
 
     // archon variables
     private boolean leader = false;
-    private String behavior = "none";
 
     private void archon() {
 	try {
@@ -658,6 +711,11 @@ public class RobotPlayer implements Runnable {
 		working = rc.isMovementActive()
 			|| rc.getRoundsUntilAttackIdle() != 0
 			|| rc.getRoundsUntilMovementIdle() != 0;
+		
+		// prioritize healing bots in adjacent squares
+    		Robot weakAdjAlly = findWeakestAdjacentBot();
+    		if (weakAdjAlly != null && needsHealing(weakAdjAlly))
+    		    archonHeal(weakAdjAlly);
 
 		MapLocation commanderTargetLocation = null;
 
@@ -770,15 +828,15 @@ public class RobotPlayer implements Runnable {
 	}
     }
 
+    boolean isFinder = false;
     	/*
          * Routines for Archon Followers
          */
-        private void archonFollower() {
+    private void archonFollower() {
     	Direction goalDir = null;
     	MapLocation goalLoc = null;
     	int[] commanders = new int[ARCHONS_PER_TEAM - 1];
-    	boolean isFinder = false;
-    	int finder = 0;
+    	MapLocation lastLeaderLocation = null;
     	while (true) {
     	    try {
     		working = rc.isMovementActive()
@@ -786,13 +844,66 @@ public class RobotPlayer implements Runnable {
     			|| rc.getRoundsUntilMovementIdle() != 0;
     
     		// prioritize healing bots in adjacent squares
-    		Robot weakAdjAlly = findWeakestAdjacentBot();
-    		if (weakAdjAlly != null && needsHealing(weakAdjAlly))
-    		    archonHeal(weakAdjAlly);
+    		
+    		if (isFinder){
+    		    Robot weakAdjAlly = findWeakestAdjacentBot();
+    		    if (weakAdjAlly != null && needsHealing(weakAdjAlly))
+    			archonHeal(weakAdjAlly);
+    		}
+    		else {
+    		    Robot[] critBots = findCritHealthAllies();
+    		    Robot closestCritBot = null;
+    		    double closestDist = 0;
+    		    //find the closest bot with crit health
+    		    for (int i = 0; i < critBots.length; i++) {
+    			if (critBots[i] != null){
+    			    System.out.println(critBots[i].getID() + " ");
+    			    double x = distanceFrom(rc.senseRobotInfo(critBots[i]).location);
+    			    if (closestCritBot == null){
+    				closestCritBot = critBots[i];
+    				closestDist = x; 
+    			    }
+    			    else
+    				if (x < closestDist){
+    				    closestCritBot = critBots[i];
+    				    closestDist = x;
+    				}
+    			}
+    		    }
+    		    if (closestCritBot != null) {
+    			if (closestDist < 1.75)
+    			    archonHeal(closestCritBot);
+    		    }
+    		    else{
+    			//search for medium health allies
+    			Robot[] lowBots = findLowHealthAllies();
+        		Robot closestLowBot = null;
+        		//find the closest bot with crit health
+        		for (int i = 0; i < lowBots.length; i++) {
+        		    if (lowBots[i] != null){
+        			System.out.println(lowBots[i].getID() + " ");
+        			double x = distanceFrom(rc.senseRobotInfo(lowBots[i]).location);
+        			if (closestLowBot == null){
+        			    closestLowBot = lowBots[i];
+        			    closestDist = x; 
+        			    }
+        			else {
+        			    if (x < closestDist){
+        				closestLowBot = lowBots[i];
+        				closestDist = x;
+        			    }
+        			}
+        		    }
+    		    	}
+    		    }
+    		    
+    		    
+    		}
     
     		// get all msgs
     		Message[] incomingMsgs = rc.getAllMessages();
     		MapLocation commanderTargetLocation = null;
+    		String behavior = "none";
     		
     		if (incomingMsgs != null) {
     		    for (int i = 0; i < incomingMsgs.length; i++) {
@@ -818,6 +929,13 @@ public class RobotPlayer implements Runnable {
     		}
     		// get orders and set behaviors accordingly
     		if (leaderMsg != null) {
+    		    //memorize the last location of the leader (so we don;t get lost)
+    		    lastLeaderLocation = leaderMsg.locations[0];
+    		    if (distanceFrom(lastLeaderLocation) > MAX_DIST_FROM_LEADER){
+    			if (!working)
+    			    hunt(calcDirection(lastLeaderLocation));
+    		    }
+    		    else
     		    //spawn
     		    if (leaderMsg.strings[1].equalsIgnoreCase(SPAWN_STRING))
     			behavior = SPAWN_STRING;
@@ -872,9 +990,11 @@ public class RobotPlayer implements Runnable {
     				    leaderMsg.locations[1] = targetInfo.location;
     				}
     			    } 
-    			    else 
+    			    else {
+    				isFinder = false;
     				if (commanderTargetLocation != null) {
     				    leaderMsg.locations[1] = commanderTargetLocation;
+    				}
     			    }
     			} 
     			// splice in the new ID
@@ -892,8 +1012,11 @@ public class RobotPlayer implements Runnable {
     
     		    }
     		}
+    		//else there is no leader Msg (maybe we are out of range?)
+    		else
+    		    if (distanceFrom(lastLeaderLocation) > MAX_DIST_FROM_LEADER)
+    			hunt(calcDirection(lastLeaderLocation));
     
-    		rc.setIndicatorString(2, isFinder + " ");
     		rc.yield();
     
     	    } catch (Exception e) {
@@ -926,7 +1049,7 @@ public class RobotPlayer implements Runnable {
 			    .maxEnergon()) {
 
 		double energonNeeded = hurtBotInfo.maxEnergon
-			- hurtBotInfo.energonLevel;
+			- hurtBotInfo.eventualEnergon;
 		// if possible, heal hurt bot completely, else contribute all
 		// possible
 		// without committing suicide (hence subtracting the archon's
