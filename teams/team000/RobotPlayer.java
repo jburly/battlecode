@@ -8,9 +8,6 @@ import static battlecode.common.GameConstants.*;
 public class RobotPlayer implements Runnable {
 	private final RobotController rc;
 
-	// Variables to indicate the number of allied units within range.
-	private int archonNum, scoutNum, soldierNum, mortarNum = 0;
-
 	// Strings for the various robot behaviors.
 	private static final String ATTACK_BEHAVIOR = "attack";
 	private static final String SPAWN_BEHAVIOR = "spawn";
@@ -35,8 +32,8 @@ public class RobotPlayer implements Runnable {
 	private static final int SCOUT_ID_INDEX = 2;
 	
 	// indices in the message location array where particular data is stored
-	private static final int ARCHON_TARGET_INDEX = 1;
 	private static final int ARCHON_LOC_INDEX = 0;
+	private static final int ARCHON_TARGET_INDEX = 1;
 	private static final int SCOUT_TARGET_INDEX = 0;
 	
 	// the amount of time to wait before attacking at the beginning of the game
@@ -45,16 +42,16 @@ public class RobotPlayer implements Runnable {
 	// the distance to an adjacent, diagonal square rounded up
 	private static final double MAX_DIST_TO_ADJ_LOC = 1.75;
 	
-	private final static double LOW_HEALTH_MULTIPLIER = .4;
-
-	// whether or not the team has any air units
-	private boolean haveAirUnits = false;
+	private static final double LOW_HEALTH_MULTIPLIER = .4;
 
 	// unchanging variables for any robot
 	// so I am not always calling the robot controller for these
 	private Team myTeam;
 	private RobotType myType;
 
+	//location where an archon can spawn at the time
+	private MapLocation spawnLocation = null; 
+	
 	// a non-archon bot's leader, i.e. the archon a mortar/scout should follow
 	private Robot fighterMom = null; 
 	private int following = 0;// the ID of the robot you're following
@@ -321,32 +318,6 @@ public class RobotPlayer implements Runnable {
 		return false;
 	}
 
-	/**
-	 * Checks to see if there are any air enemies in the vicinity.
-	 * 
-	 * Note: Only returns one bot. May want this to return all bots, or just
-	 * make it a boolean statement indicating that air bots are close.
-	 */
-	private Robot searchForAirEnemy() {
-		try {
-			Robot nearAirBots[] = rc.senseNearbyAirRobots();
-
-			for (int i = 0; i < nearAirBots.length; i++) {
-				RobotInfo botInfo = rc.senseRobotInfo(nearAirBots[i]);
-				if (botInfo.team != rc.getTeam()
-						&& botInfo.type == RobotType.BOMBER
-						|| botInfo.type == RobotType.SCOUT)
-					return nearAirBots[i];
-			}
-		} catch (Exception e) {
-			System.out.println("Caught Exception");
-			e.printStackTrace();
-		}
-		return null;
-	}
-
-
-/////////////////////////////////////////////////////////////////////////////////////////
 	/**
 	 * For spawned soldiers to find out who spawned them. They will designate
 	 * the one that is closest to them as leader.
@@ -782,13 +753,20 @@ public class RobotPlayer implements Runnable {
 				} else if (!behavior.equals(SPAWN_SCOUT_BEHAVIOR))
 					behavior = SPAWN_MORTAR_BEHAVIOR;
 
+				// try spawning a mortar
 				if (behavior.equals(SPAWN_MORTAR_BEHAVIOR)) {
-					MapLocation spawnLoc = spaceToSpawn();
+					
+					MapLocation spawnLoc = spaceToSpawn(); // location to spawn a mortar
+					
+					// to get a mortar, spawn a soldier if able
+					// the soldier will evolve after being healed
 					if (rc.canSpawn()) {
 						if (spawnLoc != rc.getLocation()
 								&& rc.getEnergonLevel() > 2 * RobotType.SOLDIER
 										.spawnCost()) {
+							
 							Direction spawnDir = calcDirection(spawnLoc);
+							
 							if (spawnDir == rc.getDirection()) {
 								rc.spawn(RobotType.SOLDIER);
 								spawnLocation = rc.getLocation().add(
@@ -796,20 +774,31 @@ public class RobotPlayer implements Runnable {
 								rc.yield();
 								myMortar = rc
 										.senseGroundRobotAtLocation(spawnLocation);
+							
+							// face the direction of the spawn location if you aren't
+							// already
 							} else if (!working)
 								rc.setDirection(spawnDir);
 						}
+						
+					// if you cannot spawn, move to the nearest allied tower to do so
 					} else if (!working && nearestAlliedTower() != null)
 						hunt(calcDirection(nearestAlliedTower()));
 				}
 
+				// try to spawn a scout
 				if (behavior.equals(SPAWN_SCOUT_BEHAVIOR)) {
-					MapLocation spawnLoc = airSpaceToSpawn();
+					
+					MapLocation spawnLoc = airSpaceToSpawn(); // space to spawn an air unit
+					
+					// if able to spawn, do so
 					if (rc.canSpawn()) {
 						if (spawnLoc != rc.getLocation()
 								&& rc.getEnergonLevel() > 2 * RobotType.SOLDIER
 										.spawnCost()) {
+							
 							Direction spawnDir = calcDirection(spawnLoc);
+							
 							if (spawnDir == rc.getDirection()) {
 								rc.spawn(RobotType.SCOUT);
 								spawnLocation = rc.getLocation().add(
@@ -817,30 +806,48 @@ public class RobotPlayer implements Runnable {
 								rc.yield();
 								myScout = rc
 										.senseAirRobotAtLocation(spawnLocation);
+								
+							// face the direction of the spawn location if you aren't
+							// already	
 							} else if (!working)
 								rc.setDirection(spawnDir);
 						}
 					}
 				}
-
+				
+				// if in defense mode, since your target is an enemy robot, it is 
+				// location and existence may change the next turn, so at this turns
+				// end the target is no longer valid
 				if (inDefense) {
 					goalLoc = null;
-					inDefense = false;
+					inDefense = false; // may no longer be enemy robots in range
 				}
+				
+				// if attacking 
 				if (behavior.equals(ATTACK_BEHAVIOR)) {
+					
+					// tell your other bots to exhibit the same behavior
 					msg.strings[BEHAVIOR_INDEX] = ATTACK_BEHAVIOR;
+					
 					Direction goalDir = null;
-					// if the leader has no idea where the goal is located
-					// then let's try to search for a tower ourselves
+					
+					// if someone else hasn't located a target, search for yourself
 					if (goalLoc == null) {
+						
+						//search for enemies in range
 						Robot target = targetEnemyGBot();
+						
+						// if no enemy robots are in range, find a tower
 						if (target == null) {
 							target = searchForTower();
+							
+						// else, prepare to fend off enemy robots	
 						} else {
 							msg.strings[BEHAVIOR_INDEX] = "DEFENSE";
 							inDefense = true;
 						}
-						// if successful, pass on the info
+						
+						// if a target is found, pass along its info
 						if (target != null) {
 							RobotInfo targetInfo = rc.senseRobotInfo(target);
 							if (targetInfo.team != myTeam) {
@@ -849,27 +856,37 @@ public class RobotPlayer implements Runnable {
 						}
 					}
 
+					// if an ally has found a tower, and you haven't
+					// join them in an attack
 					if (goalLoc == null && alliedLeaderTower != null)
 						goalLoc = alliedLeaderTower;
 
-					// check for allied tower
+					// check to make sure it has not already been captured
 					if (isAlliedTower(goalLoc))
 						goalLoc = null;
-					// broadcast that
 
+					// if you still don't have the location of a target, 
+					// move in the direction of the closest unknown tower
 					if (goalLoc == null) {
 						goalDir = rc.senseClosestUnknownTower();
+						
+					// if you have the location of a target, move towards it	
 					} else
 						goalDir = calcDirection(goalLoc);
-					msg.locations[1] = goalLoc;
+					
+					// let others know your direction and target location
 					msg.strings[GOAL_DIRECTION_INDEX] = goalDir.toString();
+					msg.locations[ARCHON_TARGET_INDEX] = goalLoc;
 
-					// if nobody senses the tower, move towards it
-					if (!working && msg.locations[1] == null && goalDir != null)
+					// if you can still perform an action, haven't already located a
+					// nearby target, move towards your goal direction if you have one
+					if (!working && msg.locations[ARCHON_TARGET_INDEX] == null 
+							&& goalDir != null)
 						hunt(goalDir);
 
 				}
 
+				// display your behavior and broadcast your message
 				rc.setIndicatorString(0, behavior);
 				rc.broadcast(msg);
 				rc.yield();
@@ -880,27 +897,13 @@ public class RobotPlayer implements Runnable {
 			}
 	}
 
+	
 	/***************************************************************************
-	 * ADDITIONAL ARCHON ROUTINES
+	 * Supporting methods for robot routines.
 	 **************************************************************************/
 
-
-	boolean isFinder = false;
-
-
-	// looks through the array of commander IDs and sees if the ID is in there
-	// (sees if the robot is a commander)
-	public boolean isCommander(int[] commanders, int ID) {
-		for (int i = 0; i < commanders.length; i++)
-			if (ID == commanders[i])
-				return true;
-		return false;
-	}
-
-	// Archon Follower stuff
-	MapLocation spawnLocation = null;
-
-	/*
+	
+	/**
 	 * Method for the archon to heal a specified bot to the best of its ability.
 	 */
 	private void archonHeal(Robot hurtBot) {
@@ -912,10 +915,10 @@ public class RobotPlayer implements Runnable {
 
 				double energonNeeded = hurtBotInfo.maxEnergon
 						- hurtBotInfo.eventualEnergon;
-				// if possible, heal hurt bot completely, else contribute all
-				// possible
-				// without committing suicide (hence subtracting the archon's
-				// energon upkeep)
+				
+				// if possible, heal hurt bot completely, else contribute as much
+				// energon as possible without committing suicide (hence subtracting 
+				// the archon's energon upkeep)
 				double transferAmount = Math.min(energonNeeded, rc
 						.getEnergonLevel()
 						- RobotType.ARCHON.energonUpkeep());
@@ -930,6 +933,11 @@ public class RobotPlayer implements Runnable {
 		}
 	}
 
+	/**
+	 * Method for 
+	 * 
+	 * @param hurtBot robot with low energon that the scout should heal
+	 */
 	private void scoutHeal(Robot hurtBot) {
 		try {
 			RobotInfo hurtBotInfo = rc.senseRobotInfo(hurtBot);
@@ -954,72 +962,6 @@ public class RobotPlayer implements Runnable {
 			System.out.println("Caught exception:");
 			e.printStackTrace();
 		}
-	}
-
-	private boolean needsHealing(Robot bot) {
-		boolean needToHeal = false;
-		try {
-			RobotInfo botInfo = rc.senseRobotInfo(bot);
-			if (botInfo.energonLevel < botInfo.maxEnergon / 2)
-				needToHeal = true;
-		} catch (Exception e) {
-			System.out.println("Caught exception:");
-			e.printStackTrace();
-		}
-		return needToHeal;
-	}
-
-	/*
-	 * Method for count squad. Resets variables so another count can be taken.
-	 */
-	private void resetCount() {
-		archonNum = 0;
-		soldierNum = 0;
-		mortarNum = 0;
-		scoutNum = 0;
-	}
-
-	/*
-	 * Count the number of allied bots within radius. This is used to tell if we
-	 * need to spawn or not.
-	 */
-	private void countSquad() {
-		// sense nearby bots and then process the info
-		Robot[] nearbyGroundRobots = rc.senseNearbyGroundRobots();
-		try {
-			resetCount();
-			for (int i = 0; i < nearbyGroundRobots.length; i++) {
-				RobotInfo roboInfo = rc.senseRobotInfo(nearbyGroundRobots[i]);
-				if (roboInfo.team.equals(rc.getTeam())) {
-					switch (roboInfo.type) {
-					case ARCHON:
-						archonNum++;
-						break;
-					case SOLDIER:
-						soldierNum++;
-						break;
-					case MORTAR:
-						mortarNum++;
-						break;
-					case SCOUT:
-						scoutNum++;
-						break;
-					}
-				}
-			}
-		} catch (Exception e) {
-			System.out.println("caught exception:");
-			e.printStackTrace();
-		}
-	}
-
-	/**
-	 * A method to sum up the number of non-Archon robots in range.
-	 * 
-	 * @return the number of non-Archon robots in range
-	 */
-	private int troopNum() {
-		return soldierNum + mortarNum + scoutNum;
 	}
 
 	/**
@@ -1162,11 +1104,15 @@ public class RobotPlayer implements Runnable {
 		}
 	}
 
-	/*
-	 * Takes a string and interprets which direction to move in from the string.
+	/**
+	 * Takes a string and returns a direction based on the given string.
+	 * 
+	 * @return the direction specified by the given string.
 	 */
 	private Direction msgDirection(String msgDir) {
 		try {
+			
+			// compares the string to the direction in string format
 			if (msgDir.equalsIgnoreCase(Direction.NORTH.toString()))
 				return Direction.NORTH;
 			if (msgDir.equalsIgnoreCase(Direction.SOUTH.toString()))
@@ -1183,23 +1129,39 @@ public class RobotPlayer implements Runnable {
 				return Direction.SOUTH_EAST;
 			if (msgDir.equalsIgnoreCase(Direction.SOUTH_WEST.toString()))
 				return Direction.SOUTH_WEST;
+			
 		} catch (Exception e) {
 			System.out.println("Caught exception:");
 			e.printStackTrace();
 		}
+		
+		// if the string did not match a direction, return null
 		return null;
 	}
 
+	/**
+	 * Searches for nearby enemy robots within the attack range of a Mortar.
+	 * 
+	 * @return an enemy bot within that vicinity, null otherwise
+	 */
 	private Robot targetEnemyGBot() {
+		
 		Robot enemyBot = null;
+		
 		try {
 			Robot[] nearGBots = rc.senseNearbyGroundRobots();
 
+			// search for an enemy bot, or tower
 			for (int i = 0; i < nearGBots.length; i++) {
 				RobotInfo botInfo = rc.senseRobotInfo(nearGBots[i]);
+				
 				if (botInfo.team != myTeam) {
+					
+					//attack enemy towers first as they will give us the upperhand later
 					if (botInfo.type == RobotType.TOWER) {
 						return nearGBots[i];
+						
+					// otherwise find any robot within a mortars attack range
 					} else if (enemyBot == null
 							|| (distanceFrom(rc.senseRobotInfo(enemyBot).location) > Math
 									.sqrt(RobotType.MORTAR
@@ -1215,6 +1177,7 @@ public class RobotPlayer implements Runnable {
 			System.out.println("Caught exception:");
 			e.printStackTrace();
 		}
+		
 		return enemyBot;
 	}
 }
