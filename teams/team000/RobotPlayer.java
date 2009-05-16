@@ -1,4 +1,4 @@
-package team000;
+package the_Porcelain_Champions;
 
 import java.math.*;
 import java.util.Vector;
@@ -42,7 +42,10 @@ public class RobotPlayer implements Runnable {
 	// the distance to an adjacent, diagonal square rounded up
 	private static final double MAX_DIST_TO_ADJ_LOC = 1.75;
 	
+	// the percentage of maximum health that marks the point at which robots
+	// need to be healed
 	private static final double LOW_HEALTH_MULTIPLIER = .4;
+	private static final double MORTAR_LOW_HEALTH_MULTIPLIER = .8;
 
 	// unchanging variables for any robot
 	// so I am not always calling the robot controller for these
@@ -379,7 +382,7 @@ public class RobotPlayer implements Runnable {
 				
 					// checks if it's a message from the leader
 					if (incomingMsgs[i].ints != null
-							&& incomingMsgs[i].ints[0] == following){
+							&& incomingMsgs[i].ints[ARCHON_ID_INDEX] == following){
 						leaderMsg = incomingMsgs[i];
 					}
 				}
@@ -742,11 +745,12 @@ public class RobotPlayer implements Runnable {
 					RobotInfo mortarInfo = rc.senseRobotInfo(myMortar);
 					if (distanceFrom(mortarInfo.location) < MAX_DIST_TO_ADJ_LOC) {
 						archonHeal(myMortar);
-					} else if (mortarInfo.eventualEnergon <= mortarInfo.maxEnergon * .8)
-						if (!working) {
+					} else if (!working && mortarInfo.eventualEnergon 
+								<= mortarInfo.maxEnergon * MORTAR_LOW_HEALTH_MULTIPLIER){
+					
 							hunt(calcDirection(mortarInfo.location));
 							working = true;
-						}
+					}
 				
 				// if you are not trying to spawn a scout, and you cannot heal a mortar,
 				// you need a mortar, so spawn one
@@ -934,7 +938,7 @@ public class RobotPlayer implements Runnable {
 	}
 
 	/**
-	 * Method for 
+	 * Method for scouts to transfer energon to other robots with low energon.
 	 * 
 	 * @param hurtBot robot with low energon that the scout should heal
 	 */
@@ -952,12 +956,10 @@ public class RobotPlayer implements Runnable {
 				// without committing suicide (hence subtracting the archon's
 				// energon upkeep)
 				double transferAmount = Math.min(energonNeeded, rc
-						.getEnergonLevel() * .8);
+						.getEnergonLevel() * MORTAR_LOW_HEALTH_MULTIPLIER);
 				rc.transferEnergon(transferAmount, hurtBotInfo.location,
 						hurtBot.getRobotLevel());
-
 			}
-
 		} catch (Exception e) {
 			System.out.println("Caught exception:");
 			e.printStackTrace();
@@ -973,13 +975,11 @@ public class RobotPlayer implements Runnable {
 	private MapLocation spaceToSpawn() {
 		try {
 
-			MapLocation currLoc = rc.getLocation(); // current location of
-			// archon
+			MapLocation currLoc = rc.getLocation(); // current location of archon
 
 			// the following if statements checks all the adjacent MapLocations
 			// and checks whether or not they are empty, based upon the robots
-			// ability
-			// to move into it.
+			// ability to move into it.
 			if (rc.senseGroundRobotAtLocation(currLoc.add(Direction.NORTH)) == null
 					&& rc.canMove(Direction.NORTH))
 				return currLoc.add(Direction.NORTH);
@@ -1016,6 +1016,7 @@ public class RobotPlayer implements Runnable {
 					.add(Direction.SOUTH_WEST)) == null
 					&& rc.canMove(Direction.SOUTH_WEST))
 				return currLoc.add(Direction.SOUTH_WEST);
+			
 		} catch (Exception e) {
 			System.out.println("Caught Exception:");
 			e.printStackTrace();
@@ -1033,8 +1034,8 @@ public class RobotPlayer implements Runnable {
 	 */
 	private MapLocation airSpaceToSpawn() {
 		try {
-			MapLocation currLoc = rc.getLocation(); // current location of
-			// archon
+			
+			MapLocation currLoc = rc.getLocation(); // current location of archon
 
 			// the following if statements checks all the adjacent MapLocations
 			// to see if there is already an air robot occupying it.
@@ -1065,6 +1066,7 @@ public class RobotPlayer implements Runnable {
 			else if (rc.senseAirRobotAtLocation(currLoc
 					.add(Direction.SOUTH_WEST)) == null)
 				return currLoc.add(Direction.SOUTH_WEST);
+			
 		} catch (Exception e) {
 			System.out.println("Caught Exception:");
 			e.printStackTrace();
@@ -1073,10 +1075,6 @@ public class RobotPlayer implements Runnable {
 		// if there is not an empty adjacent MapLocation, return null
 		return null;
 	}
-
-	/**
-	 * Other Bot SubRoutines
-	 */
 
 	/**
 	 * Method for non-Archon robots to search for the Archon which spawned them.
